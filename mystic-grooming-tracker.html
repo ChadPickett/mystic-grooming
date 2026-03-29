@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mystic Grooming — Finance Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1210;
+    --parchment: #f5f0e8;
+    --cream: #faf7f2;
+    --gold: #b8924a;
+    --gold-light: #d4af72;
+    --gold-pale: #f0e6d0;
+    --rust: #8b3a2a;
+    --sage: #4a5e4a;
+    --shadow: rgba(26,18,16,0.12);
+    --shadow-deep: rgba(26,18,16,0.25);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--parchment);
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(184,146,74,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(139,58,42,0.06) 0%, transparent 60%);
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--ink);
+    color: var(--gold-light);
+    padding: 20px 24px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 16px var(--shadow-deep);
+  }
+
+  .header-inner {
+    max-width: 700px;
+    margin: 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .wordmark {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 300;
+    letter-spacing: 0.12em;
+    line-height: 1;
+  }
+
+  .wordmark span {
+    font-style: italic;
+    color: var(--gold);
+  }
+
+  .auth-status {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: rgba(212,175,114,0.6);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .auth-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #555;
+    transition: background 0.3s;
+  }
+  .auth-dot.connected { background: #6ab46a; }
+
+  /* ── MAIN LAYOUT ── */
+  main {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 20px 16px 60px;
+  }
+
+  /* ── SETUP CARD ── */
+  #setup-card {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.3);
+    border-radius: 2px;
+    padding: 28px 24px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 12px var(--shadow);
+  }
+
+  #setup-card h2 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--gold);
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  #setup-card p {
+    color: #666;
+    font-size: 11px;
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+
+  #setup-card a { color: var(--gold); }
+
+  .field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 12px;
+  }
+
+  .field-row label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #888;
+    text-transform: uppercase;
+  }
+
+  .field-row input {
+    background: var(--parchment);
+    border: 1px solid rgba(184,146,74,0.25);
+    border-radius: 2px;
+    padding: 10px 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field-row input:focus { border-color: var(--gold); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--gold-light);
+  }
+  .btn-primary:hover { background: #2d1f1c; }
+
+  .btn-gold {
+    background: var(--gold);
+    color: var(--ink);
+    font-weight: 500;
+  }
+  .btn-gold:hover { background: var(--gold-light); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--gold);
+    border: 1px solid rgba(184,146,74,0.4);
+  }
+  .btn-ghost:hover { border-color: var(--gold); background: var(--gold-pale); }
+
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 10px;
+  }
+
+  /* ── DASHBOARD ── */
+  #dashboard {
+    display: none;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  @media(min-width: 480px) {
+    .summary-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+
+  .summary-card {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    padding: 14px 14px 12px;
+    box-shadow: 0 1px 6px var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .summary-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .summary-card.income::before { background: var(--sage); }
+  .summary-card.expense::before { background: var(--rust); }
+  .summary-card.draw::before { background: var(--gold); }
+  .summary-card.profit::before { background: var(--ink); }
+
+  .summary-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 6px;
+  }
+
+  .summary-amount {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .summary-amount.positive { color: var(--sage); }
+  .summary-amount.negative { color: var(--rust); }
+
+  /* ── LOG FORM ── */
+  .log-section {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 8px var(--shadow);
+    overflow: hidden;
+  }
+
+  .log-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(184,146,74,0.2);
+    background: var(--parchment);
+  }
+
+  .log-tab {
+    flex: 1;
+    padding: 12px 8px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: #999;
+    border: none;
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+
+  .log-tab.active {
+    color: var(--ink);
+    border-bottom-color: var(--gold);
+  }
+
+  .log-tab:hover:not(.active) { color: var(--gold); }
+
+  .log-form {
+    padding: 20px;
+    display: none;
+  }
+  .log-form.active { display: block; }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .form-row.full { grid-template-columns: 1fr; }
+
+  .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-group label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #999;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    background: var(--parchment);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    padding: 9px 11px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus,
+  .form-group textarea:focus { border-color: var(--gold); }
+
+  .form-group textarea { resize: vertical; min-height: 60px; }
+
+  .form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  /* ── ENTRIES LIST ── */
+  .entries-section {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    box-shadow: 0 1px 8px var(--shadow);
+    overflow: hidden;
+  }
+
+  .entries-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(184,146,74,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--parchment);
+  }
+
+  .entries-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+  }
+
+  .entry-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(184,146,74,0.1);
+    gap: 12px;
+    animation: fadeIn 0.3s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .entry-row:last-child { border-bottom: none; }
+
+  .entry-type-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-income { background: var(--sage); }
+  .dot-expense { background: var(--rust); }
+  .dot-draw { background: var(--gold); }
+  .dot-mileage { background: #7a8faa; }
+
+  .entry-info { flex: 1; min-width: 0; }
+
+  .entry-desc {
+    font-size: 12px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .entry-meta {
+    font-size: 10px;
+    color: #aaa;
+    margin-top: 2px;
+  }
+
+  .entry-amount {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .amount-income { color: var(--sage); }
+  .amount-expense { color: var(--rust); }
+  .amount-draw { color: var(--gold); }
+  .amount-mileage { color: #7a8faa; }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--gold-light);
+    padding: 12px 20px;
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── SPINNER ── */
+  .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(212,175,114,0.3);
+    border-top-color: var(--gold-light);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #bbb;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  .divider {
+    text-align: center;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #ccc;
+    margin: 16px 0;
+    position: relative;
+  }
+
+  .divider::before, .divider::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: 30%;
+    height: 1px;
+    background: rgba(184,146,74,0.2);
+  }
+
+  .divider::before { left: 0; }
+  .divider::after { right: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="wordmark">Mystic <span>Grooming</span></div>
+
+  </div>
+</header>
+
+<main>
+
+  <!-- SIGN IN SCREEN -->
+  <div id="signin-screen" style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:20px;">
+    <div style="font-family:'Cormorant Garamond',serif; font-size:28px; font-weight:300; color:#1a1210; text-align:center; letter-spacing:0.05em;">Welcome back</div>
+    <div style="font-size:11px; color:#999; letter-spacing:0.08em;">Tap below to sign in with Google</div>
+    <button class="btn btn-gold" style="padding:14px 32px; font-size:13px;" onclick="signIn()">Sign in with Google</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard">
+
+    <!-- Summary Cards -->
+    <div class="summary-grid">
+      <div class="summary-card income">
+        <div class="summary-label">Income</div>
+        <div class="summary-amount positive" id="sum-income">$0</div>
+      </div>
+      <div class="summary-card expense">
+        <div class="summary-label">Expenses</div>
+        <div class="summary-amount negative" id="sum-expense">$0</div>
+      </div>
+      <div class="summary-card draw">
+        <div class="summary-label">Owner's Draw</div>
+        <div class="summary-amount" id="sum-draw">$0</div>
+      </div>
+      <div class="summary-card profit">
+        <div class="summary-label">Net Profit</div>
+        <div class="summary-amount" id="sum-profit">$0</div>
+      </div>
+    </div>
+
+    <!-- Log Form -->
+    <div class="log-section">
+      <div class="log-tabs">
+        <button class="log-tab active" onclick="switchTab('income')">💰 Income</button>
+        <button class="log-tab" onclick="switchTab('expense')">🧾 Expense</button>
+        <button class="log-tab" onclick="switchTab('draw')">👛 Draw</button>
+        <button class="log-tab" onclick="switchTab('mileage')">🚗 Mileage</button>
+      </div>
+
+      <!-- Income -->
+      <div class="log-form active" id="form-income">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="income-date">
+          </div>
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="income-amount" placeholder="0.00" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Client Name</label>
+            <input type="text" id="income-client" placeholder="Dog owner name">
+          </div>
+          <div class="form-group">
+            <label>Dog / Service</label>
+            <input type="text" id="income-service" placeholder="e.g. Golden / Full groom">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea id="income-notes" placeholder="Tip, payment method, etc."></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-gold" onclick="submitEntry('income')">
+            Log Income
+            <div class="spinner" id="spinner-income"></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Expense -->
+      <div class="log-form" id="form-expense">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="expense-date">
+          </div>
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="expense-amount" placeholder="0.00" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Category</label>
+            <select id="expense-category">
+              <option value="">Select category</option>
+              <option>Supplies & shampoos</option>
+              <option>Equipment</option>
+              <option>Software / subscriptions</option>
+              <option>Marketing</option>
+              <option>Rent / utilities</option>
+              <option>Vehicle</option>
+              <option>Professional services</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Vendor / Store</label>
+            <input type="text" id="expense-vendor" placeholder="Where did you spend?">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Description</label>
+            <textarea id="expense-desc" placeholder="What did you buy?"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-gold" onclick="submitEntry('expense')">
+            Log Expense
+            <div class="spinner" id="spinner-expense"></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Draw -->
+      <div class="log-form" id="form-draw">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="draw-date">
+          </div>
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="draw-amount" placeholder="0.00" step="0.01" min="0">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>What was it for?</label>
+            <textarea id="draw-notes" placeholder="e.g. Groceries, gas, rent..."></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-gold" onclick="submitEntry('draw')">
+            Log Draw
+            <div class="spinner" id="spinner-draw"></div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mileage -->
+      <div class="log-form" id="form-mileage">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="mileage-date">
+          </div>
+          <div class="form-group">
+            <label>Miles Driven</label>
+            <input type="number" id="mileage-miles" placeholder="0.0" step="0.1" min="0">
+          </div>
+        </div>
+        <div class="form-row full">
+          <div class="form-group">
+            <label>Purpose</label>
+            <textarea id="mileage-purpose" placeholder="e.g. Supply run to Petco, client pickup..."></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-gold" onclick="submitEntry('mileage')">
+            Log Mileage
+            <div class="spinner" id="spinner-mileage"></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Entries -->
+    <div class="entries-section">
+      <div class="entries-header">
+        <div class="entries-title">Recent Entries</div>
+        <button class="btn btn-ghost btn-sm" onclick="loadEntries()">↻ Refresh</button>
+      </div>
+      <div id="entries-list">
+        <div class="empty-state">Loading entries...</div>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+
+</main>
+
+<div id="toast"></div>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+
+<script>
+// ── CONFIG ───────────────────────────────────────────────────────────────
+const CLIENT_ID = '950377960340-jlee39psb54svvrcnsl2hms2hkbopf8p.apps.googleusercontent.com';
+const SHEET_ID  = '1EQtAcxzQ1chTT3IoTVRMwYwYp2NV197RtY0W8iOYl40';
+let TOKEN = null;
+let entries = [];
+let tokenClient = null;
+
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+const IRS_MILEAGE_RATE = 0.67;
+
+// ── INIT ────────────────────────────────────────────────────────────────
+window.onload = () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+  waitForGoogle();
+};
+
+function waitForGoogle() {
+  if (typeof google !== 'undefined' && google.accounts) {
+    initTokenClient();
+  } else {
+    setTimeout(waitForGoogle, 200);
+  }
+}
+
+function initTokenClient() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
+      TOKEN = resp.access_token;
+      document.getElementById('signin-screen').style.display = 'none';
+      onConnected();
+    }
+  });
+}
+
+function signIn() {
+  if (tokenClient) tokenClient.requestAccessToken();
+}
+
+function onConnected() {
+  document.getElementById('dashboard').style.display = 'block';
+  ensureSheetHeaders();
+  loadEntries();
+}
+
+// ── SHEET HELPERS ────────────────────────────────────────────────────────
+async function sheetsRequest(method, endpoint, body) {
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}`;
+  const res = await fetch(base + endpoint, {
+    method,
+    headers: {
+      'Authorization': 'Bearer ' + TOKEN,
+      'Content-Type': 'application/json'
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  return res.json();
+}
+
+async function ensureSheetHeaders() {
+  // Check if sheet has headers already
+  const data = await sheetsRequest('GET', '/values/Sheet1!A1:J1');
+  if (!data.values || data.values[0]?.[0] !== 'Date') {
+    await sheetsRequest('PUT', '/values/Sheet1!A1:J1?valueInputOption=RAW', {
+      values: [['Date','Type','Amount','Client/Vendor','Service/Category','Notes/Purpose','Miles','Tax Deductible Value','Who Logged','Timestamp']]
+    });
+  }
+}
+
+async function appendRow(values) {
+  return sheetsRequest('POST', '/values/Sheet1!A:J:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
+    values: [values]
+  });
+}
+
+async function loadEntries() {
+  if (!TOKEN) return;
+  const data = await sheetsRequest('GET', '/values/Sheet1!A2:J200');
+  const rows = data.values || [];
+  entries = rows.reverse().slice(0, 30); // show last 30, newest first
+  renderEntries();
+  calcSummary(rows);
+}
+
+// ── TABS ─────────────────────────────────────────────────────────────────
+function switchTab(type) {
+  document.querySelectorAll('.log-tab').forEach((t, i) => {
+    t.classList.toggle('active', ['income','expense','draw','mileage'][i] === type);
+  });
+  document.querySelectorAll('.log-form').forEach(f => f.classList.remove('active'));
+  document.getElementById('form-' + type).classList.add('active');
+}
+
+// ── SUBMIT ────────────────────────────────────────────────────────────────
+async function submitEntry(type) {
+  const spinner = document.getElementById('spinner-' + type);
+  spinner.style.display = 'inline-block';
+
+  let row;
+  const ts = new Date().toLocaleString();
+
+  if (type === 'income') {
+    const date   = document.getElementById('income-date').value;
+    const amount = parseFloat(document.getElementById('income-amount').value);
+    const client = document.getElementById('income-client').value.trim();
+    const svc    = document.getElementById('income-service').value.trim();
+    const notes  = document.getElementById('income-notes').value.trim();
+    if (!date || !amount) { showToast('Date and amount required'); spinner.style.display='none'; return; }
+    row = [date, 'Income', amount, client, svc, notes, '', '', '', ts];
+    clearForm(['income-amount','income-client','income-service','income-notes']);
+
+  } else if (type === 'expense') {
+    const date   = document.getElementById('expense-date').value;
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+    const cat    = document.getElementById('expense-category').value;
+    const vendor = document.getElementById('expense-vendor').value.trim();
+    const desc   = document.getElementById('expense-desc').value.trim();
+    if (!date || !amount) { showToast('Date and amount required'); spinner.style.display='none'; return; }
+    row = [date, 'Expense', amount, vendor, cat, desc, '', amount, '', ts];
+    clearForm(['expense-amount','expense-vendor','expense-desc']);
+    document.getElementById('expense-category').value = '';
+
+  } else if (type === 'draw') {
+    const date   = document.getElementById('draw-date').value;
+    const amount = parseFloat(document.getElementById('draw-amount').value);
+    const notes  = document.getElementById('draw-notes').value.trim();
+    if (!date || !amount) { showToast('Date and amount required'); spinner.style.display='none'; return; }
+    row = [date, "Owner's Draw", amount, '', '', notes, '', '', '', ts];
+    clearForm(['draw-amount','draw-notes']);
+
+  } else if (type === 'mileage') {
+    const date    = document.getElementById('mileage-date').value;
+    const miles   = parseFloat(document.getElementById('mileage-miles').value);
+    const purpose = document.getElementById('mileage-purpose').value.trim();
+    if (!date || !miles) { showToast('Date and miles required'); spinner.style.display='none'; return; }
+    const deductVal = (miles * IRS_MILEAGE_RATE).toFixed(2);
+    row = [date, 'Mileage', '', '', '', purpose, miles, deductVal, '', ts];
+    clearForm(['mileage-miles','mileage-purpose']);
+  }
+
+  try {
+    await appendRow(row);
+    showToast('✓ Logged successfully');
+    loadEntries();
+  } catch(e) {
+    showToast('Error saving — check connection');
+  }
+
+  spinner.style.display = 'none';
+}
+
+function clearForm(ids) {
+  ids.forEach(id => document.getElementById(id).value = '');
+}
+
+// ── RENDER ENTRIES ────────────────────────────────────────────────────────
+function renderEntries() {
+  const list = document.getElementById('entries-list');
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty-state">No entries yet — log your first transaction above.</div>';
+    return;
+  }
+
+  list.innerHTML = entries.map(row => {
+    const [date, type, amount, col4, col5, notes, miles] = row;
+    const typeKey = type === 'Income' ? 'income'
+                  : type === 'Expense' ? 'expense'
+                  : type === "Owner's Draw" ? 'draw'
+                  : 'mileage';
+
+    const label = type === 'Mileage'
+      ? `${miles} mi — ${notes || col5 || ''}`
+      : `${col4 || col5 || notes || type}`;
+
+    const amountStr = type === 'Mileage'
+      ? `${miles} mi`
+      : `$${parseFloat(amount || 0).toFixed(2)}`;
+
+    return `
+      <div class="entry-row">
+        <div class="entry-type-dot dot-${typeKey}"></div>
+        <div class="entry-info">
+          <div class="entry-desc">${label || type}</div>
+          <div class="entry-meta">${date} · ${type}</div>
+        </div>
+        <div class="entry-amount amount-${typeKey}">${amountStr}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── SUMMARY ───────────────────────────────────────────────────────────────
+function calcSummary(rows) {
+  let income = 0, expense = 0, draw = 0;
+  rows.forEach(row => {
+    const type = row[1];
+    const amt  = parseFloat(row[2]) || 0;
+    if (type === 'Income')       income  += amt;
+    if (type === 'Expense')      expense += amt;
+    if (type === "Owner's Draw") draw    += amt;
+  });
+  const profit = income - expense;
+
+  document.getElementById('sum-income').textContent  = '$' + income.toFixed(2);
+  document.getElementById('sum-expense').textContent = '$' + expense.toFixed(2);
+  document.getElementById('sum-draw').textContent    = '$' + draw.toFixed(2);
+
+  const profitEl = document.getElementById('sum-profit');
+  profitEl.textContent = '$' + Math.abs(profit).toFixed(2);
+  profitEl.className = 'summary-amount ' + (profit >= 0 ? 'positive' : 'negative');
+  if (profit < 0) profitEl.textContent = '-$' + Math.abs(profit).toFixed(2);
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
