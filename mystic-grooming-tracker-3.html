@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mystic Grooming</title>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MG Finance">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1a1210">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js');
+  }
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1a1210;
+    --parchment: #f5f0e8;
+    --cream: #faf7f2;
+    --gold: #b8924a;
+    --gold-light: #d4af72;
+    --gold-pale: #f0e6d0;
+    --rust: #8b3a2a;
+    --sage: #4a5e4a;
+    --slate: #7a8faa;
+    --shadow: rgba(26,18,16,0.12);
+    --shadow-deep: rgba(26,18,16,0.25);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--parchment);
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(184,146,74,0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(139,58,42,0.06) 0%, transparent 60%);
+  }
+
+  /* HEADER */
+  header {
+    background: var(--ink);
+    color: var(--gold-light);
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 24px 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 16px var(--shadow-deep);
+  }
+  .header-inner {
+    max-width: 700px;
+    margin: 0 auto;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .wordmark {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px;
+    font-weight: 300;
+    letter-spacing: 0.12em;
+    line-height: 1;
+  }
+  .wordmark span { font-style: italic; color: var(--gold); }
+  .page-label {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(212,175,114,0.6);
+  }
+
+  main {
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 20px 16px calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 2px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    text-decoration: none;
+  }
+  .btn-gold { background: var(--gold); color: var(--ink); font-weight: 500; }
+  .btn-gold:hover { background: var(--gold-light); }
+  .btn-ghost { background: transparent; color: var(--gold); border: 1px solid rgba(184,146,74,0.4); }
+  .btn-ghost:hover { border-color: var(--gold); background: var(--gold-pale); }
+  .btn-sm { padding: 6px 14px; font-size: 10px; }
+
+  /* SIGN IN */
+  #signin-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 18px;
+    text-align: center;
+  }
+  #signin-screen img { width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 4px 18px var(--shadow); }
+  .signin-title { font-family: 'Cormorant Garamond', serif; font-size: 28px; font-weight: 300; letter-spacing: 0.05em; }
+  .signin-sub { font-size: 11px; color: #999; letter-spacing: 0.06em; line-height: 1.7; max-width: 280px; }
+
+  #app { display: none; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* SUMMARY */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  @media(min-width: 480px) { .summary-grid { grid-template-columns: repeat(4, 1fr); } }
+  .summary-card {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    padding: 14px 14px 12px;
+    box-shadow: 0 1px 6px var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .summary-card.income::before { background: var(--sage); }
+  .summary-card.expense::before { background: var(--rust); }
+  .summary-card.draw::before { background: var(--gold); }
+  .summary-card.profit::before { background: var(--ink); }
+  .summary-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 6px; }
+  .summary-amount { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; line-height: 1; }
+  .summary-amount.positive { color: var(--sage); }
+  .summary-amount.negative { color: var(--rust); }
+
+  /* PANELS */
+  .panel {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 8px var(--shadow);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(184,146,74,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: var(--parchment);
+  }
+  .panel-title { font-family: 'Cormorant Garamond', serif; font-size: 17px; font-weight: 400; letter-spacing: 0.05em; }
+
+  /* LOG TABS */
+  .log-tabs { display: flex; border-bottom: 1px solid rgba(184,146,74,0.2); background: var(--parchment); }
+  .log-tab {
+    flex: 1;
+    padding: 12px 4px;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: #999;
+    border: none;
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .log-tab.active { color: var(--ink); border-bottom-color: var(--gold); }
+  .log-form { padding: 20px; display: none; }
+  .log-form.active { display: block; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .form-row.full { grid-template-columns: 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .form-group label { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: #999; }
+  .form-group input, .form-group select, .form-group textarea {
+    background: var(--parchment);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    padding: 9px 11px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--ink);
+    outline: none;
+    width: 100%;
+    -webkit-appearance: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--gold); }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .hint { font-size: 10px; color: #aaa; letter-spacing: 0.04em; margin-top: 4px; }
+
+  /* ENTRIES */
+  .entry-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(184,146,74,0.1);
+    gap: 12px;
+  }
+  .entry-row:last-child { border-bottom: none; }
+  .entry-type-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-income { background: var(--sage); }
+  .dot-expense { background: var(--rust); }
+  .dot-draw { background: var(--gold); }
+  .dot-mileage { background: var(--slate); }
+  .entry-info { flex: 1; min-width: 0; }
+  .entry-desc { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entry-meta { font-size: 10px; color: #aaa; margin-top: 2px; }
+  .entry-meta a { color: var(--gold); }
+  .entry-amount { font-family: 'Cormorant Garamond', serif; font-size: 18px; white-space: nowrap; }
+  .amount-income { color: var(--sage); }
+  .amount-expense { color: var(--rust); }
+  .amount-draw { color: var(--gold); }
+  .amount-mileage { color: var(--slate); }
+  .empty-state { text-align: center; padding: 36px 20px; color: #bbb; font-size: 11px; letter-spacing: 0.06em; line-height: 1.7; }
+
+  /* SCHEDULE */
+  .cal-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .day-label {
+    padding: 10px 20px 6px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gold);
+    background: var(--parchment);
+    border-bottom: 1px solid rgba(184,146,74,0.1);
+  }
+  .event-row {
+    display: flex;
+    gap: 14px;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(184,146,74,0.1);
+    text-decoration: none;
+    color: var(--ink);
+  }
+  .event-time { font-size: 11px; color: var(--sage); min-width: 64px; padding-top: 2px; }
+  .event-info { flex: 1; min-width: 0; }
+  .event-title { font-family: 'Cormorant Garamond', serif; font-size: 18px; line-height: 1.2; }
+  .event-detail { font-size: 10px; color: #999; margin-top: 4px; line-height: 1.5; white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+  /* SOCIALS */
+  .social-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .social-card {
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.2);
+    border-radius: 2px;
+    padding: 20px 14px;
+    box-shadow: 0 1px 8px var(--shadow);
+    text-decoration: none;
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+    border-top: 3px solid var(--accent, var(--gold));
+  }
+  .social-card.wide { grid-column: 1 / -1; flex-direction: row; justify-content: center; }
+  .social-icon { font-size: 28px; line-height: 1; }
+  .social-name { font-family: 'Cormorant Garamond', serif; font-size: 18px; }
+  .social-sub { font-size: 9px; letter-spacing: 0.08em; color: #999; text-transform: uppercase; }
+
+  /* BOTTOM NAV */
+  nav.bottom-nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--ink);
+    justify-content: center;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    z-index: 100;
+    box-shadow: 0 -2px 16px var(--shadow-deep);
+  }
+  .nav-inner { display: flex; width: 100%; max-width: 700px; }
+  .nav-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: rgba(212,175,114,0.45);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 12px 4px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    border-top: 2px solid transparent;
+  }
+  .nav-btn .nav-icon { font-size: 18px; }
+  .nav-btn.active { color: var(--gold-light); border-top-color: var(--gold); }
+
+  /* TOAST / SPINNER */
+  #toast {
+    position: fixed;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    color: var(--gold-light);
+    padding: 12px 20px;
+    border-radius: 2px;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: all 0.3s;
+    z-index: 999;
+    pointer-events: none;
+    max-width: 90vw;
+    text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(26,18,16,0.25);
+    border-top-color: var(--ink);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="wordmark">Mystic <span>Grooming</span></div>
+    <div class="page-label" id="page-label"></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- SIGN IN -->
+  <div id="signin-screen">
+    <img src="icon-192.png" alt="Mystic Grooming logo">
+    <div class="signin-title">Welcome back</div>
+    <div class="signin-sub">Sign in with the business account<br><b style="color:var(--ink);">mysticgrooming@gmail.com</b><br>so everyone sees the same books and schedule.</div>
+    <button class="btn btn-gold" style="padding:14px 32px; font-size:13px;" onclick="signIn()">Sign in with Google</button>
+  </div>
+
+  <div id="app">
+
+    <!-- ================= FINANCES ================= -->
+    <section class="page active" id="page-finances">
+
+      <div class="summary-grid">
+        <div class="summary-card income">
+          <div class="summary-label">Income</div>
+          <div class="summary-amount positive" id="sum-income">$0</div>
+        </div>
+        <div class="summary-card expense">
+          <div class="summary-label">Expenses</div>
+          <div class="summary-amount negative" id="sum-expense">$0</div>
+        </div>
+        <div class="summary-card draw">
+          <div class="summary-label">Owner's Draw</div>
+          <div class="summary-amount" id="sum-draw">$0</div>
+        </div>
+        <div class="summary-card profit">
+          <div class="summary-label">Net Profit</div>
+          <div class="summary-amount" id="sum-profit">$0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="log-tabs">
+          <button class="log-tab active" data-tab="income" onclick="switchTab('income')">💰 Income</button>
+          <button class="log-tab" data-tab="expense" onclick="switchTab('expense')">🧾 Expense</button>
+          <button class="log-tab" data-tab="draw" onclick="switchTab('draw')">👛 Draw</button>
+          <button class="log-tab" data-tab="mileage" onclick="switchTab('mileage')">🚗 Miles</button>
+        </div>
+
+        <!-- Income -->
+        <div class="log-form active" id="form-income">
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="income-date"></div>
+            <div class="form-group"><label>Amount ($)</label><input type="number" id="income-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>Client Name</label><input type="text" id="income-client" placeholder="Dog owner name"></div>
+            <div class="form-group"><label>Dog / Service</label><input type="text" id="income-service" placeholder="e.g. Golden / Full groom"></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group"><label>Notes</label><textarea id="income-notes" placeholder="Tip, payment method, etc."></textarea></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-gold" onclick="submitEntry('income')">Log Income <div class="spinner" id="spinner-income"></div></button>
+          </div>
+        </div>
+
+        <!-- Expense -->
+        <div class="log-form" id="form-expense">
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="expense-date"></div>
+            <div class="form-group"><label>Amount ($)</label><input type="number" id="expense-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Category</label>
+              <select id="expense-category">
+                <option value="">Select category</option>
+                <option>Supplies & shampoos</option>
+                <option>Equipment</option>
+                <option>Software / subscriptions</option>
+                <option>Marketing</option>
+                <option>Rent / utilities</option>
+                <option>Vehicle</option>
+                <option>Professional services</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="form-group"><label>Vendor / Store</label><input type="text" id="expense-vendor" placeholder="Where?"></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group"><label>Description</label><textarea id="expense-desc" placeholder="What did you buy?"></textarea></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group">
+              <label>Receipt (optional)</label>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="btn btn-ghost btn-sm" style="flex:1;" onclick="document.getElementById('expense-receipt-camera').click()">📷 Camera</button>
+                <button type="button" class="btn btn-ghost btn-sm" style="flex:1;" onclick="document.getElementById('expense-receipt-file').click()">📁 Gallery / File</button>
+              </div>
+              <input type="file" id="expense-receipt-camera" accept="image/*" capture="environment" style="display:none;">
+              <input type="file" id="expense-receipt-file" style="display:none;">
+              <div id="receipt-selected" class="hint" style="display:none;"></div>
+              <div id="receipt-preview" style="margin-top:8px; display:none;">
+                <img id="receipt-img" style="max-width:100%; max-height:120px; border-radius:2px; border:1px solid rgba(184,146,74,0.2);">
+              </div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-gold" onclick="submitEntry('expense')">Log Expense <div class="spinner" id="spinner-expense"></div></button>
+          </div>
+        </div>
+
+        <!-- Draw -->
+        <div class="log-form" id="form-draw">
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="draw-date"></div>
+            <div class="form-group"><label>Amount ($)</label><input type="number" id="draw-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group"><label>What was it for?</label><textarea id="draw-notes" placeholder="e.g. Groceries, gas, rent..."></textarea></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-gold" onclick="submitEntry('draw')">Log Draw <div class="spinner" id="spinner-draw"></div></button>
+          </div>
+        </div>
+
+        <!-- Mileage -->
+        <div class="log-form" id="form-mileage">
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="mileage-date"></div>
+            <div class="form-group"><label>Miles Driven</label><input type="number" id="mileage-miles" placeholder="0.0" step="0.1" min="0" inputmode="decimal"></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group">
+              <label>Purpose</label>
+              <textarea id="mileage-purpose" placeholder="e.g. Supply run, client pickup..."></textarea>
+              <div class="hint" id="mileage-rate-hint"></div>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn btn-gold" onclick="submitEntry('mileage')">Log Mileage <div class="spinner" id="spinner-mileage"></div></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Recent Entries</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadEntries()">↻ Refresh</button>
+        </div>
+        <div id="entries-list"><div class="empty-state">Loading entries...</div></div>
+      </div>
+
+    </section>
+
+    <!-- ================= SCHEDULE ================= -->
+    <section class="page" id="page-schedule">
+
+      <div class="cal-actions">
+        <a class="btn btn-gold" id="cal-add-link" target="_blank" rel="noopener">＋ Add Groom</a>
+        <a class="btn btn-ghost" id="cal-open-link" target="_blank" rel="noopener">Open Calendar</a>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Upcoming Grooms</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">↻ Refresh</button>
+        </div>
+        <div id="schedule-list"><div class="empty-state">Loading schedule...</div></div>
+      </div>
+
+    </section>
+
+    <!-- ================= SOCIALS ================= -->
+    <section class="page" id="page-socials">
+
+      <div class="social-grid">
+        <a class="social-card" style="--accent:#c13584;" href="https://www.instagram.com/" target="_blank" rel="noopener">
+          <div class="social-icon">📸</div>
+          <div class="social-name">Instagram</div>
+          <div class="social-sub">Posts and DMs</div>
+        </a>
+        <a class="social-card" style="--accent:#1877f2;" href="https://www.facebook.com/" target="_blank" rel="noopener">
+          <div class="social-icon">👍</div>
+          <div class="social-name">Facebook</div>
+          <div class="social-sub">Page and messages</div>
+        </a>
+        <a class="social-card" style="--accent:#34a853;" href="https://business.google.com/" target="_blank" rel="noopener">
+          <div class="social-icon">⭐</div>
+          <div class="social-name">Google</div>
+          <div class="social-sub">Business Profile and reviews</div>
+        </a>
+        <a class="social-card" style="--accent:#8ed500;" href="https://business.nextdoor.com/" target="_blank" rel="noopener">
+          <div class="social-icon">🏡</div>
+          <div class="social-name">Nextdoor</div>
+          <div class="social-sub">Business page</div>
+        </a>
+        <a class="social-card wide" style="--accent:var(--gold);" href="https://business.facebook.com/latest/home" target="_blank" rel="noopener">
+          <div class="social-icon">🗂️</div>
+          <div>
+            <div class="social-name">Meta Business Suite</div>
+            <div class="social-sub">Schedule posts for Instagram and Facebook together</div>
+          </div>
+        </a>
+      </div>
+
+    </section>
+
+  </div><!-- /app -->
+
+</main>
+
+<nav class="bottom-nav" id="bottom-nav" style="display:none;">
+  <div class="nav-inner">
+    <button class="nav-btn active" data-page="finances" onclick="showPage('finances')"><span class="nav-icon">💰</span>Finances</button>
+    <button class="nav-btn" data-page="schedule" onclick="showPage('schedule')"><span class="nav-icon">📅</span>Schedule</button>
+    <button class="nav-btn" data-page="socials" onclick="showPage('socials')"><span class="nav-icon">📣</span>Socials</button>
+  </div>
+</nav>
+
+<div id="toast"></div>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const CLIENT_ID      = '950377960340-jlee39psb54svvrcnsl2hms2hkbopf8p.apps.googleusercontent.com';
+const SHEET_ID       = '1EQtAcxzQ1chTT3IoTVRMwYwYp2NV197RtY0W8iOYl40';
+const BUSINESS_EMAIL = 'mysticgrooming@gmail.com';
+const SCOPES = [
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/calendar.readonly'
+].join(' ');
+
+// IRS business standard mileage rates (dollars per mile)
+function mileageRate(dateStr) {
+  const d = dateStr || '';
+  if (d >= '2026-07-01') return 0.76;
+  if (d >= '2026-01-01') return 0.725;
+  if (d >= '2025-01-01') return 0.70;
+  return 0.67;
+}
+
+let TOKEN = null;
+let tokenClient = null;
+let entries = [];
+let scheduleLoaded = false;
+let currentPage = 'finances';
+
+const PAGE_LABELS = { finances: 'Finances', schedule: 'Schedule', socials: 'Socials' };
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+window.onload = () => {
+  const today = localDateStr(new Date());
+  document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
+  updateMileageHint();
+  document.getElementById('mileage-date').addEventListener('change', updateMileageHint);
+
+  const cal = 'authuser=' + encodeURIComponent(BUSINESS_EMAIL);
+  document.getElementById('cal-open-link').href = 'https://calendar.google.com/calendar/r?' + cal;
+  document.getElementById('cal-add-link').href  = 'https://calendar.google.com/calendar/r/eventedit?' + cal;
+
+  waitForGoogle();
+};
+
+function localDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
+function updateMileageHint() {
+  const d = document.getElementById('mileage-date').value;
+  const r = mileageRate(d);
+  document.getElementById('mileage-rate-hint').textContent =
+    'IRS rate for this date: ' + (r * 100).toFixed(1) + '¢ per mile';
+}
+
+function waitForGoogle() {
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      hint: BUSINESS_EMAIL,
+      callback: (resp) => {
+        if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
+        TOKEN = resp.access_token;
+        onConnected();
+      }
+    });
+  } else {
+    setTimeout(waitForGoogle, 200);
+  }
+}
+
+function signIn() {
+  if (tokenClient) tokenClient.requestAccessToken();
+  else showToast('Still loading, try again in a second');
+}
+
+function onConnected() {
+  document.getElementById('signin-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('bottom-nav').style.display = 'flex';
+  scheduleLoaded = false;
+  showPage(currentPage);
+  ensureSheetHeaders();
+  loadEntries();
+}
+
+function sessionExpired() {
+  TOKEN = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('bottom-nav').style.display = 'none';
+  document.getElementById('signin-screen').style.display = 'flex';
+  showToast('Session expired, please sign in again');
+}
+
+// Wrapper that catches expired sign-ins
+async function apiFetch(url, options = {}) {
+  options.headers = Object.assign({ 'Authorization': 'Bearer ' + TOKEN }, options.headers || {});
+  const res = await fetch(url, options);
+  if (res.status === 401) { sessionExpired(); throw new Error('expired'); }
+  return res.json();
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.getElementById('page-label').textContent = PAGE_LABELS[page];
+  window.scrollTo(0, 0);
+  if (page === 'schedule' && TOKEN && !scheduleLoaded) loadSchedule();
+}
+
+function switchTab(type) {
+  document.querySelectorAll('.log-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === type));
+  document.querySelectorAll('.log-form').forEach(f => f.classList.remove('active'));
+  document.getElementById('form-' + type).classList.add('active');
+}
+
+// ── SHEETS ────────────────────────────────────────────────────────────────
+function sheetsRequest(method, endpoint, body) {
+  return apiFetch('https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + endpoint, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
+
+async function ensureSheetHeaders() {
+  try {
+    const data = await sheetsRequest('GET', '/values/Sheet1!A1:J1');
+    if (!data.error && (!data.values || data.values[0]?.[0] !== 'Date')) {
+      await sheetsRequest('PUT', '/values/Sheet1!A1:J1?valueInputOption=RAW', {
+        values: [['Date','Type','Amount','Client/Vendor','Service/Category','Notes/Purpose','Miles','Tax Deductible Value','Receipt Link','Timestamp']]
+      });
+    }
+  } catch(e) {}
+}
+
+function appendRow(values) {
+  return sheetsRequest('POST', '/values/Sheet1!A:J:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [values] });
+}
+
+async function loadEntries() {
+  if (!TOKEN) return;
+  try {
+    const data = await sheetsRequest('GET', '/values/Sheet1!A2:J');
+    if (data.error) {
+      document.getElementById('entries-list').innerHTML =
+        '<div class="empty-state">Could not open the Sheet.<br>Make sure you signed in as ' + BUSINESS_EMAIL + ' and that it has edit access.</div>';
+      return;
+    }
+    const rows = data.values || [];
+    entries = rows.slice().reverse().slice(0, 30);
+    renderEntries();
+    calcSummary(rows);
+  } catch(e) {}
+}
+
+// ── RECEIPTS ──────────────────────────────────────────────────────────────
+function handleReceiptFile(file) {
+  if (!file) return;
+  const sel = document.getElementById('receipt-selected');
+  sel.textContent = '✓ ' + file.name;
+  sel.style.display = 'block';
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      document.getElementById('receipt-img').src = ev.target.result;
+      document.getElementById('receipt-preview').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    document.getElementById('receipt-preview').style.display = 'none';
+  }
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'expense-receipt-camera') {
+    document.getElementById('expense-receipt-file').value = '';
+    handleReceiptFile(e.target.files[0]);
+  }
+  if (e.target.id === 'expense-receipt-file') {
+    document.getElementById('expense-receipt-camera').value = '';
+    handleReceiptFile(e.target.files[0]);
+  }
+});
+
+function getReceiptFile() {
+  return document.getElementById('expense-receipt-camera').files[0]
+      || document.getElementById('expense-receipt-file').files[0]
+      || null;
+}
+
+function clearReceipt() {
+  document.getElementById('expense-receipt-camera').value = '';
+  document.getElementById('expense-receipt-file').value = '';
+  document.getElementById('receipt-preview').style.display = 'none';
+  document.getElementById('receipt-selected').style.display = 'none';
+}
+
+async function ensureDriveFolder() {
+  const q = encodeURIComponent("name='Mystic Grooming Receipts' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const data = await apiFetch('https://www.googleapis.com/drive/v3/files?q=' + q);
+  if (data.files && data.files.length > 0) return data.files[0].id;
+  const folder = await apiFetch('https://www.googleapis.com/drive/v3/files', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Mystic Grooming Receipts', mimeType: 'application/vnd.google-apps.folder' })
+  });
+  return folder.id;
+}
+
+async function uploadReceipt(file, folderId, date) {
+  const metadata = { name: 'receipt_' + date + '_' + file.name, parents: [folderId] };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', file);
+  const data = await apiFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST',
+    body: form
+  });
+  return data.webViewLink || '';
+}
+
+// ── SUBMIT ────────────────────────────────────────────────────────────────
+async function submitEntry(type) {
+  const spinner = document.getElementById('spinner-' + type);
+  const val = id => document.getElementById(id).value.trim();
+  const ts = new Date().toLocaleString();
+  let row;
+
+  if (type === 'income') {
+    const date = val('income-date'), amount = parseFloat(val('income-amount'));
+    if (!date || !amount) { showToast('Date and amount required'); return; }
+    row = [date, 'Income', amount, val('income-client'), val('income-service'), val('income-notes'), '', '', '', ts];
+  }
+
+  if (type === 'expense') {
+    const date = val('expense-date'), amount = parseFloat(val('expense-amount'));
+    if (!date || !amount) { showToast('Date and amount required'); return; }
+    spinner.style.display = 'inline-block';
+    let receiptLink = '';
+    const file = getReceiptFile();
+    if (file) {
+      try {
+        showToast('Uploading receipt...');
+        const folderId = await ensureDriveFolder();
+        receiptLink = await uploadReceipt(file, folderId, date);
+      } catch(e) {
+        if (!TOKEN) { spinner.style.display = 'none'; return; }
+        showToast('Receipt upload failed, logging without it');
+      }
+    }
+    row = [date, 'Expense', amount, val('expense-vendor'), val('expense-category'), val('expense-desc'), '', amount, receiptLink, ts];
+  }
+
+  if (type === 'draw') {
+    const date = val('draw-date'), amount = parseFloat(val('draw-amount'));
+    if (!date || !amount) { showToast('Date and amount required'); return; }
+    row = [date, "Owner's Draw", amount, '', '', val('draw-notes'), '', '', '', ts];
+  }
+
+  if (type === 'mileage') {
+    const date = val('mileage-date'), miles = parseFloat(val('mileage-miles'));
+    if (!date || !miles) { showToast('Date and miles required'); return; }
+    const deduct = (miles * mileageRate(date)).toFixed(2);
+    row = [date, 'Mileage', '', '', '', val('mileage-purpose'), miles, deduct, '', ts];
+  }
+
+  spinner.style.display = 'inline-block';
+  try {
+    const res = await appendRow(row);
+    if (res.error) throw new Error(res.error.message);
+    showToast('✓ Logged');
+    clearFormFor(type);
+    loadEntries();
+  } catch(e) {
+    if (TOKEN) showToast('Error saving, check connection');
+  }
+  spinner.style.display = 'none';
+}
+
+function clearFormFor(type) {
+  const ids = {
+    income:  ['income-amount','income-client','income-service','income-notes'],
+    expense: ['expense-amount','expense-vendor','expense-desc','expense-category'],
+    draw:    ['draw-amount','draw-notes'],
+    mileage: ['mileage-miles','mileage-purpose']
+  }[type];
+  ids.forEach(id => document.getElementById(id).value = '');
+  if (type === 'expense') clearReceipt();
+}
+
+// ── RENDER ENTRIES ────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function renderEntries() {
+  const list = document.getElementById('entries-list');
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty-state">No entries yet. Log your first transaction above.</div>';
+    return;
+  }
+  list.innerHTML = entries.map(row => {
+    const [date, type, amount, col4, col5, notes, miles, , receipt] = row;
+    const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
+    const label = type === 'Mileage' ? (notes || 'Mileage') : (col4 || col5 || notes || type);
+    const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
+    const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
+    return '<div class="entry-row">' +
+      '<div class="entry-type-dot dot-' + key + '"></div>' +
+      '<div class="entry-info">' +
+        '<div class="entry-desc">' + esc(label) + '</div>' +
+        '<div class="entry-meta">' + esc(date) + ' · ' + esc(type) + receiptLink + '</div>' +
+      '</div>' +
+      '<div class="entry-amount amount-' + key + '">' + amountStr + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function calcSummary(rows) {
+  let income = 0, expense = 0, draw = 0;
+  rows.forEach(row => {
+    const amt = parseFloat(row[2]) || 0;
+    if (row[1] === 'Income') income += amt;
+    if (row[1] === 'Expense') expense += amt;
+    if (row[1] === "Owner's Draw") draw += amt;
+  });
+  const profit = income - expense;
+  document.getElementById('sum-income').textContent  = '$' + income.toFixed(2);
+  document.getElementById('sum-expense').textContent = '$' + expense.toFixed(2);
+  document.getElementById('sum-draw').textContent    = '$' + draw.toFixed(2);
+  const el = document.getElementById('sum-profit');
+  el.textContent = (profit < 0 ? '-$' : '$') + Math.abs(profit).toFixed(2);
+  el.className = 'summary-amount ' + (profit >= 0 ? 'positive' : 'negative');
+}
+
+// ── SCHEDULE ──────────────────────────────────────────────────────────────
+async function loadSchedule() {
+  if (!TOKEN) return;
+  const list = document.getElementById('schedule-list');
+  list.innerHTML = '<div class="empty-state">Loading schedule...</div>';
+  try {
+    const now = new Date();
+    const later = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000); // next 60 days
+    const params = new URLSearchParams({
+      timeMin: now.toISOString(),
+      timeMax: later.toISOString(),
+      singleEvents: 'true',
+      orderBy: 'startTime',
+      maxResults: '50'
+    });
+    const data = await apiFetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?' + params);
+    if (data.error) {
+      list.innerHTML = '<div class="empty-state">Could not load the calendar.<br>Sign out and back in as ' + BUSINESS_EMAIL + '.</div>';
+      return;
+    }
+    scheduleLoaded = true;
+    renderSchedule(data.items || []);
+  } catch(e) {}
+}
+
+function dayHeading(d) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const that = new Date(d); that.setHours(0,0,0,0);
+  const diff = Math.round((that - today) / 86400000);
+  const pretty = d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
+  if (diff === 0) return 'Today · ' + pretty;
+  if (diff === 1) return 'Tomorrow · ' + pretty;
+  return pretty;
+}
+
+function renderSchedule(items) {
+  const list = document.getElementById('schedule-list');
+  if (!items.length) {
+    list.innerHTML = '<div class="empty-state">No grooms booked in the next 60 days.<br>Tap "Add Groom" to put one on the calendar.</div>';
+    return;
+  }
+  let html = '', lastDay = '';
+  items.forEach(ev => {
+    const allDay = !ev.start.dateTime;
+    const start = allDay ? new Date(ev.start.date + 'T00:00:00') : new Date(ev.start.dateTime);
+    const dayKey = localDateStr(start);
+    if (dayKey !== lastDay) {
+      html += '<div class="day-label">' + esc(dayHeading(start)) + '</div>';
+      lastDay = dayKey;
+    }
+    const time = allDay ? 'All day' : start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const details = [ev.location, ev.description ? ev.description.replace(/<[^>]*>/g, ' ') : ''].filter(Boolean).join('\n');
+    html += '<a class="event-row" href="' + esc(ev.htmlLink) + '" target="_blank" rel="noopener">' +
+      '<div class="event-time">' + esc(time) + '</div>' +
+      '<div class="event-info">' +
+        '<div class="event-title">' + esc(ev.summary || '(No title)') + '</div>' +
+        (details ? '<div class="event-detail">' + esc(details) + '</div>' : '') +
+      '</div>' +
+    '</a>';
+  });
+  list.innerHTML = html;
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
