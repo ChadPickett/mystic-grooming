@@ -236,6 +236,27 @@
   .amount-expense { color: var(--rust); }
   .amount-draw { color: var(--gold); }
   .amount-mileage { color: var(--slate); }
+  .entry-row.editable { cursor: pointer; }
+  .entry-row.editable:active { background: var(--gold-pale); }
+  .entry-edit-hint { font-size: 12px; color: #ccc; flex-shrink: 0; }
+
+  /* EDIT SHEET */
+  #edit-overlay {
+    position: fixed; inset: 0; background: rgba(26,18,16,0.5); z-index: 300;
+    display: none; align-items: flex-end; justify-content: center;
+  }
+  #edit-overlay.show { display: flex; }
+  .edit-sheet {
+    background: var(--cream); width: 100%; max-width: 700px; max-height: 90vh; overflow-y: auto;
+    border-top: 3px solid var(--gold); border-radius: 6px 6px 0 0;
+    padding: 18px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 24px var(--shadow-deep);
+  }
+  .edit-title { font-family: 'Cormorant Garamond', serif; font-size: 20px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: baseline; }
+  .edit-title span { font-family: 'DM Mono', monospace; font-size: 10px; color: #aaa; letter-spacing: 0.08em; text-transform: uppercase; }
+  .edit-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .edit-actions .btn { flex: 1; }
+  .btn-danger { background: transparent; color: var(--rust); border: 1px solid rgba(139,58,42,0.4); }
   .empty-state { text-align: center; padding: 36px 20px; color: #bbb; font-size: 11px; letter-spacing: 0.06em; line-height: 1.7; }
 
   /* SCHEDULE */
@@ -681,6 +702,28 @@
   </div>
 </nav>
 
+<div id="edit-overlay" onclick="if (event.target === this) closeEdit()">
+  <div class="edit-sheet">
+    <div class="edit-title"><div id="edit-heading">Edit Entry</div><span id="edit-type"></span></div>
+    <div class="form-row">
+      <div class="form-group"><label>Date</label><input type="date" id="edit-date"></div>
+      <div class="form-group"><label id="edit-amount-label">Amount ($)</label><input type="number" id="edit-amount" step="0.01" min="0" inputmode="decimal"></div>
+    </div>
+    <div class="form-row" id="edit-names-row">
+      <div class="form-group"><label id="edit-name-label">Client</label><input type="text" id="edit-name"></div>
+      <div class="form-group"><label id="edit-cat-label">Service</label><input type="text" id="edit-cat"></div>
+    </div>
+    <div class="form-row full">
+      <div class="form-group"><label id="edit-notes-label">Notes</label><textarea id="edit-notes"></textarea></div>
+    </div>
+    <div class="edit-actions">
+      <button class="btn btn-danger" onclick="deleteEntry()">Delete</button>
+      <button class="btn btn-ghost" onclick="closeEdit()">Cancel</button>
+      <button class="btn btn-gold" onclick="saveEdit()">Save <div class="spinner" id="spinner-edit"></div></button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -900,7 +943,7 @@ async function loadEntries() {
       return;
     }
     const rows = data.values || [];
-    entries = rows.slice().reverse().slice(0, 30);
+    entries = rows.map((r, i) => ({ r: r, n: i + 2 })).reverse().slice(0, 30);
     renderEntries();
     calcSummary(rows);
     lastRows = rows;
@@ -1068,21 +1111,128 @@ function renderEntries() {
     list.innerHTML = '<div class="empty-state">No entries yet. Log your first transaction above.</div>';
     return;
   }
-  list.innerHTML = entries.map(row => {
+  list.innerHTML = entries.map((e, idx) => {
+    const row = e.r;
     const [date, type, amount, col4, col5, notes, miles, , receipt] = row;
     const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
     const label = type === 'Mileage' ? (notes || 'Mileage') : (col4 || col5 || notes || type);
     const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
     const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
-    return '<div class="entry-row">' +
+    return '<div class="entry-row editable" onclick="if (event.target.tagName !== \'A\') openEdit(' + idx + ')">' +
       '<div class="entry-type-dot dot-' + key + '"></div>' +
       '<div class="entry-info">' +
         '<div class="entry-desc">' + esc(label) + '</div>' +
         '<div class="entry-meta">' + esc(date) + ' · ' + esc(type) + receiptLink + '</div>' +
       '</div>' +
       '<div class="entry-amount amount-' + key + '">' + amountStr + '</div>' +
+      '<div class="entry-edit-hint">✎</div>' +
     '</div>';
   }).join('');
+}
+
+// ── EDIT / DELETE ENTRIES ─────────────────────────────────────────────────
+let editing = null;   // { n: sheet row number, r: original row values }
+let sheet1Id = null;
+
+function padRow(r) { const out = (r || []).map(v => String(v ?? '')); while (out.length < 10) out.push(''); return out.slice(0, 10); }
+
+function openEdit(idx) {
+  const e = entries[idx];
+  if (!e) return;
+  editing = { n: e.n, r: padRow(e.r) };
+  const [date, type, amount, name, cat, notes, miles] = editing.r;
+  const isMileage = type === 'Mileage', isDraw = type === "Owner's Draw", isExpense = type === 'Expense';
+
+  document.getElementById('edit-heading').textContent = 'Edit ' + (isDraw ? 'Draw' : type);
+  document.getElementById('edit-type').textContent = 'Sheet row ' + e.n;
+  document.getElementById('edit-date').value = date;
+  document.getElementById('edit-amount-label').textContent = isMileage ? 'Miles Driven' : 'Amount ($)';
+  document.getElementById('edit-amount').value = isMileage ? miles : amount;
+  document.getElementById('edit-names-row').style.display = (isMileage || isDraw) ? 'none' : '';
+  document.getElementById('edit-name-label').textContent = isExpense ? 'Vendor / Store' : 'Client Name';
+  document.getElementById('edit-cat-label').textContent = isExpense ? 'Category' : 'Dog / Service';
+  document.getElementById('edit-name').value = name;
+  document.getElementById('edit-cat').value = cat;
+  document.getElementById('edit-notes-label').textContent = isMileage ? 'Purpose' : isDraw ? 'What was it for?' : isExpense ? 'Description' : 'Notes';
+  document.getElementById('edit-notes').value = notes;
+  document.getElementById('edit-overlay').classList.add('show');
+}
+
+function closeEdit() {
+  editing = null;
+  document.getElementById('edit-overlay').classList.remove('show');
+}
+
+// Make sure the row in the sheet is still the one that was tapped (someone else may have changed the sheet)
+async function rowStillMatches() {
+  const data = await sheetsRequest('GET', '/values/Sheet1!A' + editing.n + ':J' + editing.n);
+  if (data.error) return false;
+  return JSON.stringify(padRow((data.values || [])[0])) === JSON.stringify(editing.r);
+}
+
+async function saveEdit() {
+  if (!editing) return;
+  const v = id => document.getElementById(id).value.trim();
+  const row = editing.r.slice();
+  const type = row[1];
+  const date = v('edit-date');
+  const num = parseFloat(v('edit-amount'));
+  if (!date || !num || num < 0) { showToast(type === 'Mileage' ? 'Date and miles required' : 'Date and amount required'); return; }
+
+  row[0] = date;
+  row[5] = v('edit-notes');
+  if (type === 'Mileage') {
+    row[6] = String(num);
+    row[7] = (num * mileageRate(date)).toFixed(2);
+  } else {
+    row[2] = String(num);
+    if (type !== "Owner's Draw") { row[3] = v('edit-name'); row[4] = v('edit-cat'); }
+    if (type === 'Expense') row[7] = String(num);
+  }
+
+  const spinner = document.getElementById('spinner-edit');
+  spinner.style.display = 'inline-block';
+  try {
+    if (!(await rowStillMatches())) { showToast('That entry changed in the sheet. Refreshing, try again.'); closeEdit(); loadEntries(); return; }
+    const res = await sheetsRequest('PUT', '/values/Sheet1!A' + editing.n + ':J' + editing.n + '?valueInputOption=RAW', { values: [row] });
+    if (res.error) throw new Error(res.error.message);
+    showToast('✓ Entry updated');
+    closeEdit();
+    loadEntries();
+  } catch(e) {
+    if (TOKEN) showToast('Could not save, check connection');
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+async function getSheet1Id() {
+  if (sheet1Id !== null) return sheet1Id;
+  const meta = await sheetsRequest('GET', '?fields=sheets.properties(sheetId,title)');
+  const s = (meta.sheets || []).find(x => x.properties.title === 'Sheet1');
+  if (!s) throw new Error('no Sheet1');
+  sheet1Id = s.properties.sheetId;
+  return sheet1Id;
+}
+
+async function deleteEntry() {
+  if (!editing) return;
+  const [date, type, amount, name, , notes, miles] = editing.r;
+  const what = type === 'Mileage' ? miles + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
+  if (!confirm('Delete this ' + type + ' entry?\n\n' + date + ' · ' + what + (name ? ' · ' + name : '') + '\n\nThis removes it from the Google Sheet and cannot be undone.')) return;
+  try {
+    if (!(await rowStillMatches())) { showToast('That entry changed in the sheet. Refreshing, try again.'); closeEdit(); loadEntries(); return; }
+    const id = await getSheet1Id();
+    const res = await sheetsRequest('POST', ':batchUpdate', {
+      requests: [{ deleteDimension: { range: { sheetId: id, dimension: 'ROWS', startIndex: editing.n - 1, endIndex: editing.n } } }]
+    });
+    if (res.error) throw new Error(res.error.message);
+    showToast('✓ Entry deleted');
+    closeEdit();
+    loadEntries();
+  } catch(e) {
+    if (TOKEN) showToast('Could not delete, check connection');
+  }
 }
 
 function calcSummary(rows) {
