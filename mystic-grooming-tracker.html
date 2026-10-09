@@ -737,7 +737,30 @@ window.onload = () => {
   document.getElementById('cal-add-link').href  = 'https://calendar.google.com/calendar/r/eventedit?' + cal;
 
   waitForGoogle();
+
+  // Reuse a still-valid sign-in so a refresh doesn't log you out
+  const saved = loadSavedToken();
+  if (saved) { TOKEN = saved; onConnected(); }
 };
+
+// ── SAVED SIGN-IN ─────────────────────────────────────────────────────────
+// Google access tokens last about 1 hour. Keep it on this device until then.
+function saveToken(token, expiresInSec) {
+  try {
+    const exp = Date.now() + (Math.max(60, (parseInt(expiresInSec, 10) || 3600)) - 60) * 1000;
+    localStorage.setItem('mg-token', JSON.stringify({ t: token, exp: exp }));
+  } catch(e) {}
+}
+function loadSavedToken() {
+  try {
+    const s = JSON.parse(localStorage.getItem('mg-token') || 'null');
+    if (s && s.t && s.exp > Date.now()) return s.t;
+  } catch(e) {}
+  return null;
+}
+function clearSavedToken() {
+  try { localStorage.removeItem('mg-token'); } catch(e) {}
+}
 
 function localDateStr(d) {
   const y = d.getFullYear();
@@ -762,6 +785,7 @@ function waitForGoogle() {
       callback: (resp) => {
         if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
         TOKEN = resp.access_token;
+        saveToken(resp.access_token, resp.expires_in);
         onConnected();
       }
     });
@@ -771,7 +795,8 @@ function waitForGoogle() {
 }
 
 function signIn() {
-  if (tokenClient) tokenClient.requestAccessToken();
+  // prompt '' skips the account picker and consent screen after the first time
+  if (tokenClient) tokenClient.requestAccessToken({ prompt: '' });
   else showToast('Still loading, try again in a second');
 }
 
@@ -788,6 +813,7 @@ function onConnected() {
 
 function sessionExpired() {
   TOKEN = null;
+  clearSavedToken();
   document.getElementById('app').style.display = 'none';
   document.getElementById('bottom-nav').style.display = 'none';
   document.getElementById('signin-screen').style.display = 'flex';
