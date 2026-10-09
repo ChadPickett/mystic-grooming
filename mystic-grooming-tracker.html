@@ -501,14 +501,25 @@
         <div class="log-form active" id="form-income">
           <div class="form-row">
             <div class="form-group"><label>Date</label><input type="date" id="income-date"></div>
-            <div class="form-group"><label>Amount ($)</label><input type="number" id="income-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
+            <div class="form-group"><label>Service Price ($)</label><input type="number" id="income-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Tip ($)</label>
+              <input type="number" id="income-tip" placeholder="0.00" step="0.01" min="0" inputmode="decimal">
+            </div>
+            <div class="form-group">
+              <label>Total Paid</label>
+              <input type="text" id="income-total" readonly tabindex="-1" style="background:transparent; border-style:dashed;">
+            </div>
+          </div>
+          <div class="hint" style="margin:-4px 0 10px;">Enter the tip separately, not inside Service Price. It's saved as its own row so tips can be totaled for the federal tip deduction.</div>
           <div class="form-row">
             <div class="form-group"><label>Client Name</label><input type="text" id="income-client" placeholder="Dog owner name" list="client-names" autocomplete="off" oninput="autofillClientEmail()" onchange="autofillClientEmail()"></div>
             <div class="form-group"><label>Dog / Service</label><input type="text" id="income-service" placeholder="e.g. Golden / Full groom"></div>
           </div>
           <div class="form-row full">
-            <div class="form-group"><label>Notes</label><textarea id="income-notes" placeholder="Tip, payment method, etc."></textarea></div>
+            <div class="form-group"><label>Notes</label><textarea id="income-notes" placeholder="Payment method, etc."></textarea></div>
           </div>
           <div class="form-row full">
             <div class="form-group">
@@ -1023,12 +1034,15 @@ async function submitEntry(type) {
   const spinner = document.getElementById('spinner-' + type);
   const val = id => document.getElementById(id).value.trim();
   const ts = new Date().toLocaleString();
-  let row;
+  let row, tipRow = null;
 
   if (type === 'income') {
     const date = val('income-date'), amount = parseFloat(val('income-amount'));
-    if (!date || !amount) { showToast('Date and amount required'); return; }
+    if (!date || !amount) { showToast('Date and service price required'); return; }
     row = [date, 'Income', amount, val('income-client'), val('income-service'), val('income-notes'), '', '', '', ts];
+    const tip = parseFloat(val('income-tip')) || 0;
+    if (tip < 0) { showToast('Tip cannot be negative'); return; }
+    if (tip > 0) tipRow = [date, 'Income', tip, val('income-client'), 'Tip', '', '', '', '', ts];
   }
 
   if (type === 'expense') {
@@ -1065,14 +1079,17 @@ async function submitEntry(type) {
 
   spinner.style.display = 'inline-block';
   try {
-    const res = await appendRow(row);
+    const res = tipRow
+      ? await sheetsRequest('POST', '/values/Sheet1!A:J:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [row, tipRow] })
+      : await appendRow(row);
     if (res.error) throw new Error(res.error.message);
     if (type === 'income') {
-      const taxMsg = 'set aside $' + taxOn(row[2]).toFixed(2) + ' for taxes';
+      const tipAmt = tipRow ? tipRow[2] : 0;
+      const taxMsg = 'set aside $' + taxOn(row[2] + tipAmt).toFixed(2) + ' for taxes';
       const email = val('income-email');
       if (document.getElementById('income-send-receipt').checked && email) {
         const sent = await sendReceipt(email, {
-          date: row[0], amount: row[2], client: (findClientByName(row[3]) || {}).name || row[3], service: row[4]
+          date: row[0], amount: row[2], tip: tipRow ? tipRow[2] : 0, client: (findClientByName(row[3]) || {}).name || row[3], service: row[4]
         });
         showToast(sent === true ? '✓ Logged · receipt emailed · ' + taxMsg : '✓ Logged, but ' + sent);
       } else {
@@ -1091,7 +1108,7 @@ async function submitEntry(type) {
 
 function clearFormFor(type) {
   const ids = {
-    income:  ['income-amount','income-client','income-service','income-notes','income-email'],
+    income:  ['income-amount','income-tip','income-total','income-client','income-service','income-notes','income-email'],
     expense: ['expense-amount','expense-vendor','expense-desc','expense-category'],
     draw:    ['draw-amount','draw-notes'],
     mileage: ['mileage-miles','mileage-purpose']
@@ -1115,7 +1132,7 @@ function renderEntries() {
     const row = e.r;
     const [date, type, amount, col4, col5, notes, miles, , receipt] = row;
     const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
-    const label = type === 'Mileage' ? (notes || 'Mileage') : (col4 || col5 || notes || type);
+    const label = type === 'Mileage' ? (notes || 'Mileage') : (type === 'Income' && col5 === 'Tip') ? (col4 ? col4 + ' · Tip' : 'Tip') : (col4 || col5 || notes || type);
     const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
     const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
     return '<div class="entry-row editable" onclick="if (event.target.tagName !== \'A\') openEdit(' + idx + ')">' +
@@ -1255,10 +1272,11 @@ function calcSummary(rows) {
 // ── TAX SET-ASIDE ─────────────────────────────────────────────────────────
 function calcTax(rows) {
   const year = String(new Date().getFullYear());
-  let income = 0, expense = 0, mileage = 0;
+  let income = 0, expense = 0, mileage = 0, tips = 0;
   rows.forEach(row => {
     if (!String(row[0] || '').startsWith(year)) return;
     if (row[1] === 'Income') income += parseFloat(row[2]) || 0;
+    if (row[1] === 'Income' && row[4] === 'Tip') tips += parseFloat(row[2]) || 0;
     if (row[1] === 'Expense') expense += parseFloat(row[2]) || 0;
     if (row[1] === 'Mileage') mileage += parseFloat(row[7]) || 0;
   });
@@ -1271,7 +1289,7 @@ function calcTax(rows) {
   document.getElementById('tax-profit').textContent  = money(profit);
   document.getElementById('tax-total').textContent   = money(Math.max(0, taxOn(profit)));
   document.getElementById('tax-hint').textContent =
-    rate + '% of ' + money(Math.max(0, profit)) + ' taxable profit this year. Tap the % to change it. Estimate only, not tax advice.';
+    rate + '% of ' + money(Math.max(0, profit)) + ' taxable profit this year. Tips logged this year: ' + money(tips) + ' (give this to your tax preparer for the tip deduction). Tap the % to change it. Estimate only, not tax advice.';
 }
 
 // ── SCHEDULE ──────────────────────────────────────────────────────────────
@@ -1475,6 +1493,13 @@ function earningsFor(name, map) {
   return found;
 }
 
+function updateIncomeTotal() {
+  const a = parseFloat(document.getElementById('income-amount').value) || 0;
+  const t = parseFloat(document.getElementById('income-tip').value) || 0;
+  document.getElementById('income-total').value = (a || t) ? '$' + (a + t).toFixed(2) : '';
+}
+document.addEventListener('input', e => { if (e.target.id === 'income-amount' || e.target.id === 'income-tip') updateIncomeTotal(); });
+
 // ── EMAIL RECEIPTS ────────────────────────────────────────────────────────
 function fillClientNameList() {
   const names = [...new Set(clients.map(c => c.name).filter(Boolean))].sort();
@@ -1516,11 +1541,12 @@ function receiptHtml(d) {
   return '<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;padding:24px;background:#faf7f2;color:#1a1210;border-top:3px solid #b8924a;">' +
     '<div style="font-size:24px;letter-spacing:2px;">Mystic <i style="color:#b8924a;">Grooming</i></div>' +
     '<div style="font-size:12px;color:#888;margin:4px 0 20px;letter-spacing:1px;">PAYMENT RECEIPT</div>' +
-    '<p style="font-size:15px;">Hi' + (d.client ? ' ' + esc(d.client.split(/\s+/)[0]) : '') + ', thank you for your payment!</p>' +
+    '<p style="font-size:15px;">Hi' + (d.client ? ' ' + esc(d.client.split(/\s+/)[0]) : '') + ', thank you for your payment' + (d.tip > 0 ? ' and the generous tip' : '') + '!</p>' +
     '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
       row('Date', dateStr) + row('Client', d.client) + row('Service', d.service) +
+      (d.tip > 0 ? row('Service price', '$' + Number(d.amount).toFixed(2)) + row('Tip', '$' + Number(d.tip).toFixed(2)) : '') +
       '<tr><td style="padding:12px 0 0;border-top:1px solid #e5d9c3;font-size:14px;">Total paid</td>' +
-      '<td style="padding:12px 0 0;border-top:1px solid #e5d9c3;text-align:right;font-size:22px;color:#4a5e4a;">$' + Number(d.amount).toFixed(2) + '</td></tr>' +
+      '<td style="padding:12px 0 0;border-top:1px solid #e5d9c3;text-align:right;font-size:22px;color:#4a5e4a;">$' + (Number(d.amount) + Number(d.tip || 0)).toFixed(2) + '</td></tr>' +
     '</table>' +
     '<p style="font-size:13px;color:#555;">We loved having your pup in. See you next time!</p>' +
     '<p style="font-size:12px;color:#999;margin-top:24px;">Mystic Grooming LLC · ' + BUSINESS_EMAIL + '</p>' +
@@ -1530,7 +1556,7 @@ function receiptHtml(d) {
 // Returns true when sent, or a short reason string when not
 async function sendReceipt(to, d) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return 'that email address looks wrong';
-  const subject = 'Your Mystic Grooming receipt · $' + Number(d.amount).toFixed(2);
+  const subject = 'Your Mystic Grooming receipt · $' + (Number(d.amount) + Number(d.tip || 0)).toFixed(2);
   const mime = [
     'To: ' + to,
     'Subject: =?UTF-8?B?' + btoa(String.fromCharCode(...new TextEncoder().encode(subject))) + '?=',
