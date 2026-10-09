@@ -482,12 +482,23 @@
             <div class="form-group"><label>Amount ($)</label><input type="number" id="income-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label>Client Name</label><input type="text" id="income-client" placeholder="Dog owner name"></div>
+            <div class="form-group"><label>Client Name</label><input type="text" id="income-client" placeholder="Dog owner name" list="client-names" autocomplete="off" oninput="autofillClientEmail()" onchange="autofillClientEmail()"></div>
             <div class="form-group"><label>Dog / Service</label><input type="text" id="income-service" placeholder="e.g. Golden / Full groom"></div>
           </div>
           <div class="form-row full">
             <div class="form-group"><label>Notes</label><textarea id="income-notes" placeholder="Tip, payment method, etc."></textarea></div>
           </div>
+          <div class="form-row full">
+            <div class="form-group">
+              <label>Client Email (for receipt)</label>
+              <input type="email" id="income-email" placeholder="Fills in from their waiver" inputmode="email" autocomplete="off">
+              <label style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:11px; letter-spacing:0.04em; text-transform:none; color:var(--ink);">
+                <input type="checkbox" id="income-send-receipt" checked style="width:auto;"> Email a receipt to the client
+              </label>
+              <div class="hint">Notes are kept private and are not included in the receipt.</div>
+            </div>
+          </div>
+          <datalist id="client-names"></datalist>
           <div class="form-actions">
             <button class="btn btn-gold" onclick="submitEntry('income')">Log Income <div class="spinner" id="spinner-income"></div></button>
           </div>
@@ -684,7 +695,8 @@ const BUSINESS_EMAIL = 'mysticgrooming@gmail.com';
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/calendar.readonly'
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/gmail.send'
 ].join(' ');
 
 // IRS business standard mileage rates (dollars per mile)
@@ -750,16 +762,17 @@ window.onload = () => {
 
 // ── SAVED SIGN-IN ─────────────────────────────────────────────────────────
 // Google access tokens last about 1 hour. Keep it on this device until then.
-function saveToken(token, expiresInSec) {
+function saveToken(token, expiresInSec, scope) {
   try {
     const exp = Date.now() + (Math.max(60, (parseInt(expiresInSec, 10) || 3600)) - 60) * 1000;
-    localStorage.setItem('mg-token', JSON.stringify({ t: token, exp: exp }));
+    localStorage.setItem('mg-token', JSON.stringify({ t: token, exp: exp, scope: scope || '' }));
   } catch(e) {}
 }
 function loadSavedToken() {
   try {
     const s = JSON.parse(localStorage.getItem('mg-token') || 'null');
-    if (s && s.t && s.exp > Date.now()) return s.t;
+    // Ignore sign-ins from before email receipts were added, so Gmail permission gets asked once
+    if (s && s.t && s.exp > Date.now() && String(s.scope || '').includes('gmail.send')) return s.t;
   } catch(e) {}
   return null;
 }
@@ -790,7 +803,7 @@ function waitForGoogle() {
       callback: (resp) => {
         if (resp.error) { showToast('Sign-in failed: ' + resp.error); return; }
         TOKEN = resp.access_token;
-        saveToken(resp.access_token, resp.expires_in);
+        saveToken(resp.access_token, resp.expires_in, resp.scope);
         onConnected();
       }
     });
@@ -814,6 +827,7 @@ function onConnected() {
   showPage(currentPage);
   ensureSheetHeaders();
   loadEntries();
+  loadClients();   // also feeds name suggestions and receipt emails on the Income form
 }
 
 function sessionExpired() {
@@ -1010,7 +1024,16 @@ async function submitEntry(type) {
     const res = await appendRow(row);
     if (res.error) throw new Error(res.error.message);
     if (type === 'income') {
-      showToast('✓ Logged · set aside $' + taxOn(row[2]).toFixed(2) + ' for taxes');
+      const taxMsg = 'set aside $' + taxOn(row[2]).toFixed(2) + ' for taxes';
+      const email = val('income-email');
+      if (document.getElementById('income-send-receipt').checked && email) {
+        const sent = await sendReceipt(email, {
+          date: row[0], amount: row[2], client: (findClientByName(row[3]) || {}).name || row[3], service: row[4]
+        });
+        showToast(sent === true ? '✓ Logged · receipt emailed · ' + taxMsg : '✓ Logged, but ' + sent);
+      } else {
+        showToast('✓ Logged · ' + taxMsg);
+      }
     } else {
       showToast('✓ Logged');
     }
@@ -1024,7 +1047,7 @@ async function submitEntry(type) {
 
 function clearFormFor(type) {
   const ids = {
-    income:  ['income-amount','income-client','income-service','income-notes'],
+    income:  ['income-amount','income-client','income-service','income-notes','income-email'],
     expense: ['expense-amount','expense-vendor','expense-desc','expense-category'],
     draw:    ['draw-amount','draw-notes'],
     mileage: ['mileage-miles','mileage-purpose']
@@ -1263,6 +1286,7 @@ async function loadClients() {
     })).filter(x => x.name || x.pet).reverse();   // newest first
 
     clientsLoaded = true;
+    fillClientNameList();
     renderClients();
   } catch(e) {}
 }
@@ -1298,6 +1322,87 @@ function earningsFor(name, map) {
     }
   });
   return found;
+}
+
+// ── EMAIL RECEIPTS ────────────────────────────────────────────────────────
+function fillClientNameList() {
+  const names = [...new Set(clients.map(c => c.name).filter(Boolean))].sort();
+  document.getElementById('client-names').innerHTML = names.map(n => '<option value="' + esc(n) + '">').join('');
+}
+
+function findClientByName(name) {
+  const key = normName(name);
+  if (!key) return null;
+  return clients.find(c => normName(c.name) === key && c.email) || null;   // clients are newest first
+}
+
+function autofillClientEmail() {
+  const emailEl = document.getElementById('income-email');
+  const match = findClientByName(document.getElementById('income-client').value);
+  // Only overwrite an email we filled in ourselves, never one you typed
+  if (match && (!emailEl.value || emailEl.dataset.auto === '1')) {
+    emailEl.value = match.email;
+    emailEl.dataset.auto = '1';
+  } else if (!match && emailEl.dataset.auto === '1') {
+    emailEl.value = '';
+    emailEl.dataset.auto = '';
+  }
+}
+document.addEventListener('input', e => { if (e.target.id === 'income-email') e.target.dataset.auto = ''; });
+
+function b64url(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function receiptHtml(d) {
+  const dateStr = new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const row = (label, value) => value
+    ? '<tr><td style="padding:8px 0;color:#888;font-size:13px;">' + label + '</td><td style="padding:8px 0;text-align:right;font-size:14px;">' + esc(value) + '</td></tr>'
+    : '';
+  return '<div style="font-family:Georgia,serif;max-width:480px;margin:0 auto;padding:24px;background:#faf7f2;color:#1a1210;border-top:3px solid #b8924a;">' +
+    '<div style="font-size:24px;letter-spacing:2px;">Mystic <i style="color:#b8924a;">Grooming</i></div>' +
+    '<div style="font-size:12px;color:#888;margin:4px 0 20px;letter-spacing:1px;">PAYMENT RECEIPT</div>' +
+    '<p style="font-size:15px;">Hi' + (d.client ? ' ' + esc(d.client.split(/\s+/)[0]) : '') + ', thank you for your payment!</p>' +
+    '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
+      row('Date', dateStr) + row('Client', d.client) + row('Service', d.service) +
+      '<tr><td style="padding:12px 0 0;border-top:1px solid #e5d9c3;font-size:14px;">Total paid</td>' +
+      '<td style="padding:12px 0 0;border-top:1px solid #e5d9c3;text-align:right;font-size:22px;color:#4a5e4a;">$' + Number(d.amount).toFixed(2) + '</td></tr>' +
+    '</table>' +
+    '<p style="font-size:13px;color:#555;">We loved having your pup in. See you next time!</p>' +
+    '<p style="font-size:12px;color:#999;margin-top:24px;">Mystic Grooming LLC · ' + BUSINESS_EMAIL + '</p>' +
+  '</div>';
+}
+
+// Returns true when sent, or a short reason string when not
+async function sendReceipt(to, d) {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return 'that email address looks wrong';
+  const subject = 'Your Mystic Grooming receipt · $' + Number(d.amount).toFixed(2);
+  const mime = [
+    'To: ' + to,
+    'Subject: =?UTF-8?B?' + btoa(String.fromCharCode(...new TextEncoder().encode(subject))) + '?=',
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    receiptHtml(d)
+  ].join('\r\n');
+  try {
+    const res = await apiFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ raw: b64url(mime) })
+    });
+    if (res.error) {
+      if (res.error.code === 403) { clearSavedToken(); return 'the receipt needs Gmail permission. Sign in again and allow it'; }
+      return 'the receipt failed to send';
+    }
+    return true;
+  } catch(e) {
+    return 'the receipt failed to send';
+  }
 }
 
 function renderClients() {
