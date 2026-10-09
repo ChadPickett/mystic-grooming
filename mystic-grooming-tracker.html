@@ -236,6 +236,20 @@
   .amount-expense { color: var(--rust); }
   .amount-draw { color: var(--gold); }
   .amount-mileage { color: var(--slate); }
+  .month-head {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 14px 20px; background: var(--parchment); border: none;
+    border-bottom: 1px solid rgba(184,146,74,0.15);
+    font-family: 'DM Mono', monospace; color: var(--ink); cursor: pointer; text-align: left;
+  }
+  .month-caret { font-size: 10px; color: var(--gold); width: 12px; transition: transform 0.2s; }
+  .month-head.open .month-caret { transform: rotate(90deg); }
+  .month-name { font-family: 'Cormorant Garamond', serif; font-size: 18px; flex: 1; }
+  .month-totals { font-size: 10px; text-align: right; line-height: 1.6; color: #999; }
+  .month-totals .in { color: var(--sage); }
+  .month-totals .out { color: var(--rust); }
+  .month-body { display: none; }
+  .month-body.open { display: block; }
   .entry-row.editable { cursor: pointer; }
   .entry-row.editable:active { background: var(--gold-pale); }
   .entry-edit-hint { font-size: 12px; color: #ccc; flex-shrink: 0; }
@@ -618,7 +632,7 @@
 
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title">Recent Entries</div>
+          <div class="panel-title">Transactions</div>
           <button class="btn btn-ghost btn-sm" onclick="loadEntries()">↻ Refresh</button>
         </div>
         <div id="entries-list"><div class="empty-state">Loading entries...</div></div>
@@ -954,7 +968,7 @@ async function loadEntries() {
       return;
     }
     const rows = data.values || [];
-    entries = rows.map((r, i) => ({ r: r, n: i + 2 })).reverse().slice(0, 30);
+    entries = rows.map((r, i) => ({ r: r, n: i + 2 })).filter(e => e.r.some(v => String(v || '').trim()));
     renderEntries();
     calcSummary(rows);
     lastRows = rows;
@@ -1122,28 +1136,87 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
+const openMonths = new Set();
+let monthsInitialized = false;
+
+function monthKey(date) {
+  const m = String(date || '').match(/^(\d{4})-(\d{2})/);
+  return m ? m[1] + '-' + m[2] : 'undated';
+}
+function monthLabel(key) {
+  if (key === 'undated') return 'No date';
+  const [y, m] = key.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function toggleMonth(key) {
+  if (openMonths.has(key)) openMonths.delete(key); else openMonths.add(key);
+  renderEntries();
+}
+
+function entryRowHtml(e, idx) {
+  const [date, type, amount, col4, col5, notes, miles, , receipt] = e.r;
+  const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
+  const label = type === 'Mileage' ? (notes || 'Mileage') : (type === 'Income' && col5 === 'Tip') ? (col4 ? col4 + ' · Tip' : 'Tip') : (col4 || col5 || notes || type);
+  const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
+  const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
+  return '<div class="entry-row editable" onclick="if (event.target.tagName !== \'A\') openEdit(' + idx + ')">' +
+    '<div class="entry-type-dot dot-' + key + '"></div>' +
+    '<div class="entry-info">' +
+      '<div class="entry-desc">' + esc(label) + '</div>' +
+      '<div class="entry-meta">' + esc(date) + ' · ' + esc(type) + receiptLink + '</div>' +
+    '</div>' +
+    '<div class="entry-amount amount-' + key + '">' + amountStr + '</div>' +
+    '<div class="entry-edit-hint">✎</div>' +
+  '</div>';
+}
+
 function renderEntries() {
   const list = document.getElementById('entries-list');
   if (!entries.length) {
     list.innerHTML = '<div class="empty-state">No entries yet. Log your first transaction above.</div>';
     return;
   }
-  list.innerHTML = entries.map((e, idx) => {
-    const row = e.r;
-    const [date, type, amount, col4, col5, notes, miles, , receipt] = row;
-    const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
-    const label = type === 'Mileage' ? (notes || 'Mileage') : (type === 'Income' && col5 === 'Tip') ? (col4 ? col4 + ' · Tip' : 'Tip') : (col4 || col5 || notes || type);
-    const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
-    const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
-    return '<div class="entry-row editable" onclick="if (event.target.tagName !== \'A\') openEdit(' + idx + ')">' +
-      '<div class="entry-type-dot dot-' + key + '"></div>' +
-      '<div class="entry-info">' +
-        '<div class="entry-desc">' + esc(label) + '</div>' +
-        '<div class="entry-meta">' + esc(date) + ' · ' + esc(type) + receiptLink + '</div>' +
-      '</div>' +
-      '<div class="entry-amount amount-' + key + '">' + amountStr + '</div>' +
-      '<div class="entry-edit-hint">✎</div>' +
-    '</div>';
+
+  // Group by month, newest month first; within a month newest date first
+  const groups = {};
+  entries.forEach((e, idx) => {
+    const k = monthKey(e.r[0]);
+    (groups[k] = groups[k] || []).push(idx);
+  });
+  const keys = Object.keys(groups).sort((a, b) => a === 'undated' ? 1 : b === 'undated' ? -1 : b.localeCompare(a));
+
+  // First load: open the current month (or the newest month that has entries)
+  if (!monthsInitialized) {
+    const now = localDateStr(new Date()).slice(0, 7);
+    openMonths.add(groups[now] ? now : keys[0]);
+    monthsInitialized = true;
+  }
+
+  list.innerHTML = keys.map(k => {
+    const idxs = groups[k].sort((a, b) => {
+      const da = String(entries[a].r[0] || ''), db = String(entries[b].r[0] || '');
+      return db.localeCompare(da) || entries[b].n - entries[a].n;
+    });
+    let inSum = 0, outSum = 0, miles = 0;
+    idxs.forEach(i => {
+      const r = entries[i].r, amt = parseFloat(r[2]) || 0;
+      if (r[1] === 'Income') inSum += amt;
+      else if (r[1] === 'Expense' || r[1] === "Owner's Draw") outSum += amt;
+      else if (r[1] === 'Mileage') miles += parseFloat(r[6]) || 0;
+    });
+    const open = openMonths.has(k);
+    return '<button class="month-head' + (open ? ' open' : '') + '" onclick="toggleMonth(\'' + k + '\')">' +
+        '<span class="month-caret">▶</span>' +
+        '<span class="month-name">' + esc(monthLabel(k)) + '</span>' +
+        '<span class="month-totals"><span class="in">In $' + inSum.toFixed(2) + '</span><br>' +
+          '<span class="out">Out $' + outSum.toFixed(2) + '</span><br>' +
+          (miles ? miles.toFixed(1) + ' mi · ' : '') + idxs.length + (idxs.length === 1 ? ' entry' : ' entries') +
+        '</span>' +
+      '</button>' +
+      '<div class="month-body' + (open ? ' open' : '') + '">' +
+        (open ? idxs.map(i => entryRowHtml(entries[i], i)).join('') : '') +
+      '</div>';
   }).join('');
 }
 
