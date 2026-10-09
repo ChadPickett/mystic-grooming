@@ -280,6 +280,20 @@
   .revenue-card { margin-bottom: 20px; }
   .revenue-card .summary-sub { font-size: 10px; color: #aaa; margin-top: 6px; letter-spacing: 0.04em; }
 
+  /* TAX SET-ASIDE */
+  .tax-body { padding: 14px 20px 16px; }
+  .tax-line { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; font-size: 11px; color: #888; }
+  .tax-line span:last-child { color: var(--ink); }
+  .tax-line.total { border-top: 1px solid rgba(184,146,74,0.2); margin-top: 6px; padding-top: 10px; color: var(--ink); }
+  .tax-line.total span:last-child { font-family: 'Cormorant Garamond', serif; font-size: 24px; color: var(--rust); }
+  .tax-rate { display: flex; align-items: center; gap: 6px; }
+  .tax-rate input {
+    width: 54px; text-align: right;
+    background: var(--parchment); border: 1px solid rgba(184,146,74,0.3); border-radius: 2px;
+    padding: 4px 6px; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--ink); outline: none;
+  }
+  .event-tax { font-size: 10px; color: var(--rust); margin-top: 4px; }
+
   /* CLIENTS */
   .search-box {
     width: 100%;
@@ -430,6 +444,21 @@
         <div class="summary-card profit">
           <div class="summary-label">Net Profit</div>
           <div class="summary-amount" id="sum-profit">$0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Tax Set-Aside · <span id="tax-year"></span></div>
+          <label class="tax-rate"><input type="number" id="tax-rate" min="0" max="60" step="1" inputmode="numeric" onchange="setTaxRate(this.value)"><span>%</span></label>
+        </div>
+        <div class="tax-body">
+          <div class="tax-line"><span>Income</span><span id="tax-income">$0.00</span></div>
+          <div class="tax-line"><span>− Expenses</span><span id="tax-expense">$0.00</span></div>
+          <div class="tax-line"><span>− Mileage deduction</span><span id="tax-mileage">$0.00</span></div>
+          <div class="tax-line"><span>= Taxable profit</span><span id="tax-profit">$0.00</span></div>
+          <div class="tax-line total"><span>Should have set aside</span><span id="tax-total">$0.00</span></div>
+          <div class="hint" id="tax-hint"></div>
         </div>
       </div>
 
@@ -662,6 +691,26 @@ function mileageRate(dateStr) {
   return 0.67;
 }
 
+// Tax set-aside: percent of each payment / of profit to save for taxes
+const TAX_RATE_DEFAULT = 25;
+function getTaxRate() {
+  try {
+    const v = parseFloat(localStorage.getItem('mg-tax-rate'));
+    if (!isNaN(v) && v >= 0 && v <= 60) return v;
+  } catch(e) {}
+  return TAX_RATE_DEFAULT;
+}
+function setTaxRate(v) {
+  const n = parseFloat(v);
+  if (isNaN(n) || n < 0 || n > 60) { showToast('Enter a percent between 0 and 60'); document.getElementById('tax-rate').value = getTaxRate(); return; }
+  try { localStorage.setItem('mg-tax-rate', String(n)); } catch(e) {}
+  if (lastRows) calcTax(lastRows);
+  if (scheduleLoaded) renderSchedule(scheduleItems);
+  showToast('✓ Setting aside ' + n + '%');
+}
+function taxOn(amount) { return amount * getTaxRate() / 100; }
+let lastRows = null;
+
 let TOKEN = null;
 let tokenClient = null;
 let entries = [];
@@ -680,6 +729,8 @@ window.onload = () => {
   document.querySelectorAll('input[type="date"]').forEach(el => el.value = today);
   updateMileageHint();
   document.getElementById('mileage-date').addEventListener('change', updateMileageHint);
+  document.getElementById('tax-rate').value = getTaxRate();
+  document.getElementById('tax-year').textContent = new Date().getFullYear();
 
   const cal = 'authuser=' + encodeURIComponent(BUSINESS_EMAIL);
   document.getElementById('cal-open-link').href = 'https://calendar.google.com/calendar/r?' + cal;
@@ -806,6 +857,8 @@ async function loadEntries() {
     entries = rows.slice().reverse().slice(0, 30);
     renderEntries();
     calcSummary(rows);
+    lastRows = rows;
+    calcTax(rows);
   } catch(e) {}
 }
 
@@ -924,7 +977,11 @@ async function submitEntry(type) {
   try {
     const res = await appendRow(row);
     if (res.error) throw new Error(res.error.message);
-    showToast('✓ Logged');
+    if (type === 'income') {
+      showToast('✓ Logged · set aside $' + taxOn(row[2]).toFixed(2) + ' for taxes');
+    } else {
+      showToast('✓ Logged');
+    }
     clearFormFor(type);
     loadEntries();
   } catch(e) {
@@ -987,6 +1044,28 @@ function calcSummary(rows) {
   const el = document.getElementById('sum-profit');
   el.textContent = (profit < 0 ? '-$' : '$') + Math.abs(profit).toFixed(2);
   el.className = 'summary-amount ' + (profit >= 0 ? 'positive' : 'negative');
+}
+
+// ── TAX SET-ASIDE ─────────────────────────────────────────────────────────
+function calcTax(rows) {
+  const year = String(new Date().getFullYear());
+  let income = 0, expense = 0, mileage = 0;
+  rows.forEach(row => {
+    if (!String(row[0] || '').startsWith(year)) return;
+    if (row[1] === 'Income') income += parseFloat(row[2]) || 0;
+    if (row[1] === 'Expense') expense += parseFloat(row[2]) || 0;
+    if (row[1] === 'Mileage') mileage += parseFloat(row[7]) || 0;
+  });
+  const profit = income - expense - mileage;
+  const money = n => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+  const rate = getTaxRate();
+  document.getElementById('tax-income').textContent  = money(income);
+  document.getElementById('tax-expense').textContent = money(expense);
+  document.getElementById('tax-mileage').textContent = money(mileage);
+  document.getElementById('tax-profit').textContent  = money(profit);
+  document.getElementById('tax-total').textContent   = money(Math.max(0, taxOn(profit)));
+  document.getElementById('tax-hint').textContent =
+    rate + '% of ' + money(Math.max(0, profit)) + ' taxable profit this year. Tap the % to change it. Estimate only, not tax advice.';
 }
 
 // ── SCHEDULE ──────────────────────────────────────────────────────────────
@@ -1067,7 +1146,8 @@ function updateExpected(items) {
   document.getElementById('sum-expected').textContent = '$' + total.toFixed(2);
   const unpriced = items.length - priced;
   document.getElementById('expected-sub').textContent = items.length
-    ? priced + ' of ' + items.length + ' grooms priced' + (unpriced ? ' · ' + unpriced + ' still need a quote' : '')
+    ? priced + ' of ' + items.length + ' grooms priced' + (unpriced ? ' · ' + unpriced + ' still need a quote' : '') +
+      (total > 0 ? ' · set aside $' + taxOn(total).toFixed(2) + ' for taxes' : '')
     : 'No grooms booked';
 }
 
@@ -1108,6 +1188,7 @@ function renderSchedule(items) {
       '<a class="event-info" href="' + esc(ev.htmlLink) + '" target="_blank" rel="noopener">' +
         '<div class="event-title">' + esc(ev.summary || '(No title)') + '</div>' +
         (details ? '<div class="event-detail">' + esc(details) + '</div>' : '') +
+        (p && p.price > 0 ? '<div class="event-tax">Set aside $' + taxOn(p.price).toFixed(2) + ' for taxes</div>' : '') +
       '</a>' +
       chip +
     '</div>';
