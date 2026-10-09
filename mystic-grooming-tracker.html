@@ -250,14 +250,59 @@
   }
   .event-row {
     display: flex;
+    align-items: flex-start;
     gap: 14px;
     padding: 14px 20px;
     border-bottom: 1px solid rgba(184,146,74,0.1);
-    text-decoration: none;
     color: var(--ink);
   }
   .event-time { font-size: 11px; color: var(--sage); min-width: 64px; padding-top: 2px; }
-  .event-info { flex: 1; min-width: 0; }
+  .event-info { flex: 1; min-width: 0; text-decoration: none; color: var(--ink); }
+  .price-chip {
+    flex-shrink: 0;
+    background: transparent;
+    border: 1px dashed rgba(184,146,74,0.5);
+    border-radius: 2px;
+    padding: 6px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: #aaa;
+    cursor: pointer;
+  }
+  .price-chip.set {
+    border-style: solid;
+    border-color: var(--sage);
+    color: var(--sage);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 17px;
+    padding: 3px 10px;
+  }
+  .revenue-card { margin-bottom: 20px; }
+  .revenue-card .summary-sub { font-size: 10px; color: #aaa; margin-top: 6px; letter-spacing: 0.04em; }
+
+  /* CLIENTS */
+  .search-box {
+    width: 100%;
+    background: var(--cream);
+    border: 1px solid rgba(184,146,74,0.3);
+    border-radius: 2px;
+    padding: 12px 14px;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+    margin-bottom: 14px;
+    -webkit-appearance: none;
+  }
+  .search-box:focus { border-color: var(--gold); }
+  .client-row { padding: 14px 20px; border-bottom: 1px solid rgba(184,146,74,0.1); }
+  .client-row:last-child { border-bottom: none; }
+  .client-name { font-family: 'Cormorant Garamond', serif; font-size: 19px; line-height: 1.2; }
+  .client-pet { font-size: 11px; color: var(--sage); margin-top: 3px; }
+  .client-contact { font-size: 11px; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .client-contact a { color: var(--gold); text-decoration: none; word-break: break-all; }
+  .client-meta { font-size: 10px; color: #aaa; margin-top: 6px; }
+  .client-note { font-size: 10px; color: #888; margin-top: 6px; white-space: pre-line; }
   .event-title { font-family: 'Cormorant Garamond', serif; font-size: 18px; line-height: 1.2; }
   .event-detail { font-size: 10px; color: #999; margin-top: 4px; line-height: 1.5; white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 
@@ -511,12 +556,33 @@
         <a class="btn btn-ghost" id="cal-open-link" target="_blank" rel="noopener">Open Calendar</a>
       </div>
 
+      <div class="summary-card income revenue-card">
+        <div class="summary-label">Expected Revenue · Next 60 Days</div>
+        <div class="summary-amount positive" id="sum-expected">$0.00</div>
+        <div class="summary-sub" id="expected-sub">Tap "+ Price" on a groom to add its quote</div>
+      </div>
+
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">Upcoming Grooms</div>
           <button class="btn btn-ghost btn-sm" onclick="loadSchedule()">↻ Refresh</button>
         </div>
         <div id="schedule-list"><div class="empty-state">Loading schedule...</div></div>
+      </div>
+
+    </section>
+
+    <!-- ================= CLIENTS ================= -->
+    <section class="page" id="page-clients">
+
+      <input type="search" class="search-box" id="client-search" placeholder="Search name, pet, phone, or email" oninput="renderClients()" autocomplete="off">
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title" id="clients-title">Signed Waivers</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadClients()">↻ Refresh</button>
+        </div>
+        <div id="clients-list"><div class="empty-state">Loading clients...</div></div>
       </div>
 
     </section>
@@ -564,6 +630,7 @@
   <div class="nav-inner">
     <button class="nav-btn active" data-page="finances" onclick="showPage('finances')"><span class="nav-icon">💰</span>Finances</button>
     <button class="nav-btn" data-page="schedule" onclick="showPage('schedule')"><span class="nav-icon">📅</span>Schedule</button>
+    <button class="nav-btn" data-page="clients" onclick="showPage('clients')"><span class="nav-icon">🐾</span>Clients</button>
     <button class="nav-btn" data-page="socials" onclick="showPage('socials')"><span class="nav-icon">📣</span>Socials</button>
   </div>
 </nav>
@@ -576,6 +643,9 @@
 // ── CONFIG ────────────────────────────────────────────────────────────────
 const CLIENT_ID      = '950377960340-jlee39psb54svvrcnsl2hms2hkbopf8p.apps.googleusercontent.com';
 const SHEET_ID       = '1EQtAcxzQ1chTT3IoTVRMwYwYp2NV197RtY0W8iOYl40';
+const WAIVER_SHEET_ID = '1xmybgMnstVxqhPgH55qx7Y3gzYpvoan7FS30lxKRc4w';
+const WAIVER_TAB     = 'Form Responses 1';
+const PRICING_TAB    = 'Pricing';
 const BUSINESS_EMAIL = 'mysticgrooming@gmail.com';
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
@@ -596,9 +666,13 @@ let TOKEN = null;
 let tokenClient = null;
 let entries = [];
 let scheduleLoaded = false;
+let clientsLoaded = false;
 let currentPage = 'finances';
+let scheduleItems = [];
+let prices = {};      // eventId -> { price, row }
+let clients = [];
 
-const PAGE_LABELS = { finances: 'Finances', schedule: 'Schedule', socials: 'Socials' };
+const PAGE_LABELS = { finances: 'Finances', schedule: 'Schedule', clients: 'Clients', socials: 'Socials' };
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 window.onload = () => {
@@ -655,6 +729,7 @@ function onConnected() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('bottom-nav').style.display = 'flex';
   scheduleLoaded = false;
+  clientsLoaded = false;
   showPage(currentPage);
   ensureSheetHeaders();
   loadEntries();
@@ -685,6 +760,7 @@ function showPage(page) {
   document.getElementById('page-label').textContent = PAGE_LABELS[page];
   window.scrollTo(0, 0);
   if (page === 'schedule' && TOKEN && !scheduleLoaded) loadSchedule();
+  if (page === 'clients' && TOKEN && !clientsLoaded) loadClients();
 }
 
 function switchTab(type) {
@@ -934,8 +1010,65 @@ async function loadSchedule() {
       return;
     }
     scheduleLoaded = true;
-    renderSchedule(data.items || []);
+    scheduleItems = data.items || [];
+    await loadPrices();
+    renderSchedule(scheduleItems);
   } catch(e) {}
+}
+
+// ── PRICING ───────────────────────────────────────────────────────────────
+async function loadPrices() {
+  prices = {};
+  try {
+    const data = await sheetsRequest('GET', '/values/' + encodeURIComponent(PRICING_TAB + '!A2:B'));
+    if (data.error) return;
+    (data.values || []).forEach((r, i) => {
+      if (r[0]) prices[r[0]] = { price: parseFloat(r[1]) || 0, row: i + 2 };
+    });
+  } catch(e) {}
+}
+
+async function editPrice(eventId) {
+  const current = prices[eventId] ? prices[eventId].price.toFixed(2) : '';
+  const input = prompt('Quoted price for this groom ($):', current);
+  if (input === null) return;
+  const price = parseFloat(input.replace(/[$,\s]/g, ''));
+  if (input.trim() !== '' && (isNaN(price) || price < 0)) { showToast('Enter a number, like 65'); return; }
+  const value = input.trim() === '' ? 0 : price;
+
+  try {
+    let res;
+    if (prices[eventId]) {
+      const range = encodeURIComponent(PRICING_TAB + '!B' + prices[eventId].row);
+      res = await sheetsRequest('PUT', '/values/' + range + '?valueInputOption=RAW', { values: [[value]] });
+      if (!res.error) prices[eventId].price = value;
+    } else {
+      const range = encodeURIComponent(PRICING_TAB + '!A:B');
+      res = await sheetsRequest('POST', '/values/' + range + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [[eventId, value]] });
+      if (!res.error) {
+        const m = (res.updates && res.updates.updatedRange || '').match(/(\d+)$/);
+        prices[eventId] = { price: value, row: m ? parseInt(m[1], 10) : 0 };
+      }
+    }
+    if (res.error) throw new Error(res.error.message);
+    showToast('✓ Price saved');
+    renderSchedule(scheduleItems);
+  } catch(e) {
+    if (TOKEN) showToast('Could not save. Is there a "Pricing" tab in the sheet?');
+  }
+}
+
+function updateExpected(items) {
+  let total = 0, priced = 0;
+  items.forEach(ev => {
+    const p = prices[ev.id];
+    if (p && p.price > 0) { total += p.price; priced++; }
+  });
+  document.getElementById('sum-expected').textContent = '$' + total.toFixed(2);
+  const unpriced = items.length - priced;
+  document.getElementById('expected-sub').textContent = items.length
+    ? priced + ' of ' + items.length + ' grooms priced' + (unpriced ? ' · ' + unpriced + ' still need a quote' : '')
+    : 'No grooms booked';
 }
 
 function dayHeading(d) {
@@ -950,6 +1083,7 @@ function dayHeading(d) {
 
 function renderSchedule(items) {
   const list = document.getElementById('schedule-list');
+  updateExpected(items);
   if (!items.length) {
     list.innerHTML = '<div class="empty-state">No grooms booked in the next 60 days.<br>Tap "Add Groom" to put one on the calendar.</div>';
     return;
@@ -965,15 +1099,97 @@ function renderSchedule(items) {
     }
     const time = allDay ? 'All day' : start.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const details = [ev.location, ev.description ? ev.description.replace(/<[^>]*>/g, ' ') : ''].filter(Boolean).join('\n');
-    html += '<a class="event-row" href="' + esc(ev.htmlLink) + '" target="_blank" rel="noopener">' +
+    const p = prices[ev.id];
+    const chip = (p && p.price > 0)
+      ? '<button class="price-chip set" onclick="editPrice(\'' + esc(ev.id) + '\')">$' + p.price.toFixed(2) + '</button>'
+      : '<button class="price-chip" onclick="editPrice(\'' + esc(ev.id) + '\')">+ Price</button>';
+    html += '<div class="event-row">' +
       '<div class="event-time">' + esc(time) + '</div>' +
-      '<div class="event-info">' +
+      '<a class="event-info" href="' + esc(ev.htmlLink) + '" target="_blank" rel="noopener">' +
         '<div class="event-title">' + esc(ev.summary || '(No title)') + '</div>' +
         (details ? '<div class="event-detail">' + esc(details) + '</div>' : '') +
-      '</div>' +
-    '</a>';
+      '</a>' +
+      chip +
+    '</div>';
   });
   list.innerHTML = html;
+}
+
+// ── CLIENTS ───────────────────────────────────────────────────────────────
+async function loadClients() {
+  if (!TOKEN) return;
+  const list = document.getElementById('clients-list');
+  list.innerHTML = '<div class="empty-state">Loading clients...</div>';
+  try {
+    const range = encodeURIComponent(WAIVER_TAB);
+    const data = await apiFetch('https://sheets.googleapis.com/v4/spreadsheets/' + WAIVER_SHEET_ID + '/values/' + range);
+    if (data.error) {
+      list.innerHTML = '<div class="empty-state">Could not open the waiver sheet.<br>Share it with ' + BUSINESS_EMAIL + ' (Viewer is enough), then tap Refresh.</div>';
+      return;
+    }
+    const rows = data.values || [];
+    const headers = (rows[0] || []).map(h => String(h).toLowerCase());
+    const col = word => headers.findIndex(h => h.includes(word));
+    const c = {
+      time: col('timestamp'),
+      email: col('email'),
+      name: col('last name'),
+      pet: col('pets name'),
+      breed: col('breed'),
+      phone: col('phone')
+    };
+    const get = (r, i) => i === -1 ? '' : String(r[i] || '').trim();
+
+    clients = rows.slice(1).map(r => ({
+      time: get(r, c.time),
+      email: get(r, c.email),
+      name: get(r, c.name),
+      pet: get(r, c.pet),
+      breed: get(r, c.breed),
+      phone: get(r, c.phone)
+    })).filter(x => x.name || x.pet).reverse();   // newest first
+
+    clientsLoaded = true;
+    renderClients();
+  } catch(e) {}
+}
+
+function renderClients() {
+  const list = document.getElementById('clients-list');
+  if (!clientsLoaded) return;
+  const q = document.getElementById('client-search').value.trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, '');
+  const shown = !q ? clients : clients.filter(x =>
+    [x.name, x.pet, x.email, x.breed].some(v => v.toLowerCase().includes(q)) ||
+    (qDigits.length >= 3 && x.phone.replace(/\D/g, '').includes(qDigits))
+  );
+
+  document.getElementById('clients-title').textContent =
+    'Signed Waivers (' + (q ? shown.length + ' of ' : '') + clients.length + ')';
+
+  if (!clients.length) {
+    list.innerHTML = '<div class="empty-state">No waivers signed yet.</div>';
+    return;
+  }
+  if (!shown.length) {
+    list.innerHTML = '<div class="empty-state">No clients match "' + esc(q) + '"</div>';
+    return;
+  }
+
+  list.innerHTML = shown.map(x => {
+    const signed = x.time ? new Date(x.time) : null;
+    const signedStr = signed && !isNaN(signed) ? signed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : esc(x.time);
+    const contact = [
+      x.phone ? '<a href="tel:' + esc(x.phone.replace(/[^\d+]/g, '')) + '">📞 ' + esc(x.phone) + '</a>' : '',
+      x.email ? '<a href="mailto:' + esc(x.email) + '">✉️ ' + esc(x.email) + '</a>' : ''
+    ].filter(Boolean).join('');
+    return '<div class="client-row">' +
+      '<div class="client-name">' + esc(x.name || '(No name)') + '</div>' +
+      (x.pet || x.breed ? '<div class="client-pet">🐶 ' + esc(x.pet) + (x.breed ? ' · ' + esc(x.breed) : '') + '</div>' : '') +
+      (contact ? '<div class="client-contact">' + contact + '</div>' : '') +
+      '<div class="client-meta">Waiver signed ' + signedStr + '</div>' +
+    '</div>';
+  }).join('');
 }
 
 // ── TOAST ─────────────────────────────────────────────────────────────────
