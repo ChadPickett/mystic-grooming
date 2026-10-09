@@ -316,6 +316,11 @@
   .client-contact { font-size: 11px; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .client-contact a { color: var(--gold); text-decoration: none; word-break: break-all; }
   .client-meta { font-size: 10px; color: #aaa; margin-top: 6px; }
+  .client-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .client-earned { text-align: right; flex-shrink: 0; }
+  .client-earned-amt { font-family: 'Cormorant Garamond', serif; font-size: 20px; color: var(--sage); line-height: 1.1; }
+  .client-earned-amt.none { color: #ccc; }
+  .client-earned-sub { font-size: 9px; color: #aaa; letter-spacing: 0.06em; text-transform: uppercase; margin-top: 2px; }
   .client-note { font-size: 10px; color: #888; margin-top: 6px; white-space: pre-line; }
   .event-title { font-family: 'Cormorant Garamond', serif; font-size: 18px; line-height: 1.2; }
   .event-detail { font-size: 10px; color: #999; margin-top: 4px; line-height: 1.5; white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -885,6 +890,7 @@ async function loadEntries() {
     calcSummary(rows);
     lastRows = rows;
     calcTax(rows);
+    if (clientsLoaded) renderClients();
   } catch(e) {}
 }
 
@@ -1261,6 +1267,39 @@ async function loadClients() {
   } catch(e) {}
 }
 
+// Lifetime income per client, matched on the Client Name typed when logging income
+function normName(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function clientEarnings() {
+  const map = {};
+  (lastRows || []).forEach(row => {
+    if (row[1] !== 'Income') return;
+    const key = normName(row[3]);
+    if (!key) return;
+    if (!map[key]) map[key] = { total: 0, visits: 0, last: '' };
+    map[key].total += parseFloat(row[2]) || 0;
+    map[key].visits += 1;
+    if (String(row[0] || '') > map[key].last) map[key].last = String(row[0]);
+  });
+  return map;
+}
+function earningsFor(name, map) {
+  const key = normName(name);
+  if (!key) return null;
+  // Exact name, plus entries that contain the full name, e.g. "Crystal Glover (Hades)"
+  let found = null;
+  Object.keys(map).forEach(k => {
+    if ((' ' + k + ' ').includes(' ' + key + ' ')) {
+      if (!found) found = { total: 0, visits: 0, last: '' };
+      found.total += map[k].total;
+      found.visits += map[k].visits;
+      if (map[k].last > found.last) found.last = map[k].last;
+    }
+  });
+  return found;
+}
+
 function renderClients() {
   const list = document.getElementById('clients-list');
   if (!clientsLoaded) return;
@@ -1283,7 +1322,13 @@ function renderClients() {
     return;
   }
 
+  const earnMap = clientEarnings();
   list.innerHTML = shown.map(x => {
+    const e = earningsFor(x.name, earnMap);
+    const earned = (e && e.total > 0)
+      ? '<div class="client-earned"><div class="client-earned-amt">$' + e.total.toFixed(2) + '</div>' +
+        '<div class="client-earned-sub">Lifetime · ' + e.visits + (e.visits === 1 ? ' visit' : ' visits') + '</div></div>'
+      : '<div class="client-earned"><div class="client-earned-amt none">$0</div><div class="client-earned-sub">No income logged</div></div>';
     const signed = x.time ? new Date(x.time) : null;
     const signedStr = signed && !isNaN(signed) ? signed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : esc(x.time);
     const contact = [
@@ -1291,7 +1336,7 @@ function renderClients() {
       x.email ? '<a href="mailto:' + esc(x.email) + '">✉️ ' + esc(x.email) + '</a>' : ''
     ].filter(Boolean).join('');
     return '<div class="client-row">' +
-      '<div class="client-name">' + esc(x.name || '(No name)') + '</div>' +
+      '<div class="client-top"><div class="client-name">' + esc(x.name || '(No name)') + '</div>' + earned + '</div>' +
       (x.pet || x.breed ? '<div class="client-pet">🐶 ' + esc(x.pet) + (x.breed ? ' · ' + esc(x.breed) : '') + '</div>' : '') +
       (contact ? '<div class="client-contact">' + contact + '</div>' : '') +
       '<div class="client-meta">Waiver signed ' + signedStr + '</div>' +
