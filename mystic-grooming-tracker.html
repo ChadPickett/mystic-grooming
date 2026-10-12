@@ -1162,6 +1162,7 @@ async function submitEntry(type) {
     } else {
       showToast('✓ Logged');
     }
+    openMonths.add(monthKey(row[0]));   // show the month you just logged into
     clearFormFor(type);
     loadEntries();
   } catch(e) {
@@ -1191,9 +1192,21 @@ function esc(s) {
 const openMonths = new Set();
 let monthsInitialized = false;
 
+// Accepts 2026-10-11 or 10/11/2026 (dates typed straight into the Sheet) and returns 2026-10-11
+function normDate(date) {
+  const d = String(date || '').trim();
+  let m = d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  m = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (m) {
+    const y = m[3].length === 2 ? '20' + m[3] : m[3];
+    return y + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0');
+  }
+  return '';
+}
 function monthKey(date) {
-  const m = String(date || '').match(/^(\d{4})-(\d{2})/);
-  return m ? m[1] + '-' + m[2] : 'undated';
+  const n = normDate(date);
+  return n ? n.slice(0, 7) : 'undated';
 }
 function monthLabel(key) {
   if (key === 'undated') return 'No date';
@@ -1247,7 +1260,7 @@ function renderEntries() {
 
   list.innerHTML = keys.map(k => {
     const idxs = groups[k].sort((a, b) => {
-      const da = String(entries[a].r[0] || ''), db = String(entries[b].r[0] || '');
+      const da = normDate(entries[a].r[0]), db = normDate(entries[b].r[0]);
       return db.localeCompare(da) || entries[b].n - entries[a].n;
     });
     let inSum = 0, outSum = 0, miles = 0;
@@ -1411,7 +1424,7 @@ function calcTax(rows) {
   const year = String(new Date().getFullYear());
   let income = 0, expense = 0, mileage = 0, tips = 0;
   rows.forEach(row => {
-    if (!String(row[0] || '').startsWith(year)) return;
+    if (!normDate(row[0]).startsWith(year)) return;
     if (row[1] === 'Income') income += parseFloat(row[2]) || 0;
     if (row[1] === 'Income' && row[4] === 'Tip') tips += parseFloat(row[2]) || 0;
     if (row[1] === 'Expense') expense += parseFloat(row[2]) || 0;
