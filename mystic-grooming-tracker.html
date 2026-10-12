@@ -146,6 +146,10 @@
   .summary-card.expense::before { background: var(--rust); }
   .summary-card.draw::before { background: var(--gold); }
   .summary-card.profit::before { background: var(--ink); }
+  .summary-card.contrib::before { background: #6b5b8a; }
+  .summary-card.cash::before { background: var(--slate); }
+  .summary-grid.two { grid-template-columns: 1fr 1fr; margin-top: -10px; }
+  .check-label { display:flex; align-items:center; gap:8px; margin-top:4px; font-size:11px; letter-spacing:0.04em; text-transform:none !important; color:var(--ink) !important; }
   .summary-label { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 6px; }
   .summary-amount { font-family: 'Cormorant Garamond', serif; font-size: 26px; font-weight: 300; line-height: 1; }
   .summary-amount.positive { color: var(--sage); }
@@ -189,6 +193,8 @@
     margin-bottom: -1px;
   }
   .log-tab.active { color: var(--ink); border-bottom-color: var(--gold); }
+  .log-tab { white-space: nowrap; letter-spacing: 0.02em; padding-left: 2px; padding-right: 2px; }
+  @media (max-width: 420px) { .log-tab { font-size: 9px; } }
   .log-form { padding: 20px; display: none; }
   .log-form.active { display: block; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
@@ -227,6 +233,7 @@
   .dot-expense { background: var(--rust); }
   .dot-draw { background: var(--gold); }
   .dot-mileage { background: var(--slate); }
+  .dot-contrib { background: #6b5b8a; }
   .entry-info { flex: 1; min-width: 0; }
   .entry-desc { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entry-meta { font-size: 10px; color: #aaa; margin-top: 2px; }
@@ -236,6 +243,7 @@
   .amount-expense { color: var(--rust); }
   .amount-draw { color: var(--gold); }
   .amount-mileage { color: var(--slate); }
+  .amount-contrib { color: #6b5b8a; }
   .month-head {
     display: flex; align-items: center; gap: 10px; width: 100%;
     padding: 14px 20px; background: var(--parchment); border: none;
@@ -487,6 +495,16 @@
           <div class="summary-amount" id="sum-profit">$0</div>
         </div>
       </div>
+      <div class="summary-grid two">
+        <div class="summary-card contrib">
+          <div class="summary-label">Owed Back to You</div>
+          <div class="summary-amount" id="sum-owed">$0</div>
+        </div>
+        <div class="summary-card cash">
+          <div class="summary-label">Business Cash</div>
+          <div class="summary-amount" id="sum-cash">$0</div>
+        </div>
+      </div>
 
       <div class="panel">
         <div class="panel-header">
@@ -509,6 +527,7 @@
           <button class="log-tab" data-tab="expense" onclick="switchTab('expense')">🧾 Expense</button>
           <button class="log-tab" data-tab="draw" onclick="switchTab('draw')">👛 Draw</button>
           <button class="log-tab" data-tab="mileage" onclick="switchTab('mileage')">🚗 Miles</button>
+          <button class="log-tab" data-tab="contrib" onclick="switchTab('contrib')">💵 Put In</button>
         </div>
 
         <!-- Income -->
@@ -593,6 +612,7 @@
             </div>
           </div>
           <div class="form-actions">
+            <label class="check-label" style="margin-right:auto;"><input type="checkbox" id="expense-personal" style="width:20px;height:20px;-webkit-appearance:auto;appearance:auto;accent-color:var(--gold);"> Paid with personal money</label>
             <button class="btn btn-gold" onclick="submitEntry('expense')">Log Expense <div class="spinner" id="spinner-expense"></div></button>
           </div>
         </div>
@@ -606,8 +626,25 @@
           <div class="form-row full">
             <div class="form-group"><label>What was it for?</label><textarea id="draw-notes" placeholder="e.g. Groceries, gas, rent..."></textarea></div>
           </div>
+          <label class="check-label"><input type="checkbox" id="draw-reimb" style="width:20px;height:20px;-webkit-appearance:auto;appearance:auto;accent-color:var(--gold);"> Paying ourselves back for money we put in</label>
+          <div class="hint" id="draw-owed-hint"></div>
           <div class="form-actions">
             <button class="btn btn-gold" onclick="submitEntry('draw')">Log Draw <div class="spinner" id="spinner-draw"></div></button>
+          </div>
+        </div>
+
+        <!-- Owner Contribution -->
+        <div class="log-form" id="form-contrib">
+          <div class="form-row">
+            <div class="form-group"><label>Date</label><input type="date" id="contrib-date"></div>
+            <div class="form-group"><label>Amount ($)</label><input type="number" id="contrib-amount" placeholder="0.00" step="0.01" min="0" inputmode="decimal"></div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group"><label>What was it for?</label><textarea id="contrib-notes" placeholder="e.g. Deposited personal money to cover supplies"></textarea></div>
+          </div>
+          <div class="hint">Money you put into the business from personal funds. If you bought something for the business with personal money, log it as an Expense and check "Paid with personal money" instead.</div>
+          <div class="form-actions">
+            <button class="btn btn-gold" onclick="submitEntry('contrib')">Log Money Put In <div class="spinner" id="spinner-contrib"></div></button>
           </div>
         </div>
 
@@ -1049,6 +1086,7 @@ async function submitEntry(type) {
   const val = id => document.getElementById(id).value.trim();
   const ts = new Date().toLocaleString();
   let row, tipRow = null;
+  const extraRows = [];
 
   if (type === 'income') {
     const date = val('income-date'), amount = parseFloat(val('income-amount'));
@@ -1076,12 +1114,23 @@ async function submitEntry(type) {
       }
     }
     row = [date, 'Expense', amount, val('expense-vendor'), val('expense-category'), val('expense-desc'), '', amount, receiptLink, ts];
+    if (document.getElementById('expense-personal').checked) {
+      const what = [val('expense-vendor'), val('expense-desc')].filter(Boolean).join(' · ');
+      extraRows.push([date, 'Owner Contribution', amount, '', '', 'Paid personally for expense' + (what ? ': ' + what : ''), '', '', '', ts]);
+    }
   }
 
   if (type === 'draw') {
     const date = val('draw-date'), amount = parseFloat(val('draw-amount'));
     if (!date || !amount) { showToast('Date and amount required'); return; }
-    row = [date, "Owner's Draw", amount, '', '', val('draw-notes'), '', '', '', ts];
+    const reimb = document.getElementById('draw-reimb').checked;
+    row = [date, reimb ? 'Reimbursement' : "Owner's Draw", amount, '', '', val('draw-notes'), '', '', '', ts];
+  }
+
+  if (type === 'contrib') {
+    const date = val('contrib-date'), amount = parseFloat(val('contrib-amount'));
+    if (!date || !amount) { showToast('Date and amount required'); return; }
+    row = [date, 'Owner Contribution', amount, '', '', val('contrib-notes'), '', '', '', ts];
   }
 
   if (type === 'mileage') {
@@ -1093,8 +1142,9 @@ async function submitEntry(type) {
 
   spinner.style.display = 'inline-block';
   try {
-    const res = tipRow
-      ? await sheetsRequest('POST', '/values/Sheet1!A:J:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [row, tipRow] })
+    if (tipRow) extraRows.push(tipRow);
+    const res = extraRows.length
+      ? await sheetsRequest('POST', '/values/Sheet1!A:J:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', { values: [row].concat(extraRows) })
       : await appendRow(row);
     if (res.error) throw new Error(res.error.message);
     if (type === 'income') {
@@ -1125,9 +1175,11 @@ function clearFormFor(type) {
     income:  ['income-amount','income-tip','income-total','income-client','income-service','income-notes','income-email'],
     expense: ['expense-amount','expense-vendor','expense-desc','expense-category'],
     draw:    ['draw-amount','draw-notes'],
+    contrib: ['contrib-amount','contrib-notes'],
     mileage: ['mileage-miles','mileage-purpose']
   }[type];
   ids.forEach(id => document.getElementById(id).value = '');
+  ['expense-personal','draw-reimb'].forEach(id => document.getElementById(id).checked = false);
   if (type === 'expense') clearReceipt();
 }
 
@@ -1156,7 +1208,7 @@ function toggleMonth(key) {
 
 function entryRowHtml(e, idx) {
   const [date, type, amount, col4, col5, notes, miles, , receipt] = e.r;
-  const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : type === "Owner's Draw" ? 'draw' : 'mileage';
+  const key = type === 'Income' ? 'income' : type === 'Expense' ? 'expense' : (type === "Owner's Draw" || type === 'Reimbursement') ? 'draw' : type === 'Owner Contribution' ? 'contrib' : 'mileage';
   const label = type === 'Mileage' ? (notes || 'Mileage') : (type === 'Income' && col5 === 'Tip') ? (col4 ? col4 + ' · Tip' : 'Tip') : (col4 || col5 || notes || type);
   const amountStr = type === 'Mileage' ? esc(miles) + ' mi' : '$' + (parseFloat(amount) || 0).toFixed(2);
   const receiptLink = receipt ? ' · <a href="' + esc(receipt) + '" target="_blank" rel="noopener">receipt</a>' : '';
@@ -1201,8 +1253,8 @@ function renderEntries() {
     let inSum = 0, outSum = 0, miles = 0;
     idxs.forEach(i => {
       const r = entries[i].r, amt = parseFloat(r[2]) || 0;
-      if (r[1] === 'Income') inSum += amt;
-      else if (r[1] === 'Expense' || r[1] === "Owner's Draw") outSum += amt;
+      if (r[1] === 'Income' || r[1] === 'Owner Contribution') inSum += amt;
+      else if (r[1] === 'Expense' || r[1] === "Owner's Draw" || r[1] === 'Reimbursement') outSum += amt;
       else if (r[1] === 'Mileage') miles += parseFloat(r[6]) || 0;
     });
     const open = openMonths.has(k);
@@ -1231,9 +1283,9 @@ function openEdit(idx) {
   if (!e) return;
   editing = { n: e.n, r: padRow(e.r) };
   const [date, type, amount, name, cat, notes, miles] = editing.r;
-  const isMileage = type === 'Mileage', isDraw = type === "Owner's Draw", isExpense = type === 'Expense';
+  const isMileage = type === 'Mileage', isDraw = (type === "Owner's Draw" || type === 'Reimbursement' || type === 'Owner Contribution'), isExpense = type === 'Expense';
 
-  document.getElementById('edit-heading').textContent = 'Edit ' + (isDraw ? 'Draw' : type);
+  document.getElementById('edit-heading').textContent = 'Edit ' + (type === "Owner's Draw" ? 'Draw' : type === 'Owner Contribution' ? 'Money Put In' : type);
   document.getElementById('edit-type').textContent = 'Sheet row ' + e.n;
   document.getElementById('edit-date').value = date;
   document.getElementById('edit-amount-label').textContent = isMileage ? 'Miles Driven' : 'Amount ($)';
@@ -1276,7 +1328,7 @@ async function saveEdit() {
     row[7] = (num * mileageRate(date)).toFixed(2);
   } else {
     row[2] = String(num);
-    if (type !== "Owner's Draw") { row[3] = v('edit-name'); row[4] = v('edit-cat'); }
+    if (!["Owner's Draw", 'Reimbursement', 'Owner Contribution'].includes(type)) { row[3] = v('edit-name'); row[4] = v('edit-cat'); }
     if (type === 'Expense') row[7] = String(num);
   }
 
@@ -1326,13 +1378,25 @@ async function deleteEntry() {
 }
 
 function calcSummary(rows) {
-  let income = 0, expense = 0, draw = 0;
+  let income = 0, expense = 0, draw = 0, contrib = 0, reimb = 0;
   rows.forEach(row => {
     const amt = parseFloat(row[2]) || 0;
     if (row[1] === 'Income') income += amt;
     if (row[1] === 'Expense') expense += amt;
     if (row[1] === "Owner's Draw") draw += amt;
+    if (row[1] === 'Owner Contribution') contrib += amt;
+    if (row[1] === 'Reimbursement') reimb += amt;
   });
+  const owed = contrib - reimb;
+  const cash = income + contrib - expense - draw - reimb;
+  const money = n => (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
+  document.getElementById('sum-owed').textContent = money(owed);
+  const cashEl = document.getElementById('sum-cash');
+  cashEl.textContent = money(cash);
+  cashEl.className = 'summary-amount ' + (cash >= 0 ? 'positive' : 'negative');
+  document.getElementById('draw-owed-hint').textContent = owed > 0
+    ? 'You have put in $' + owed.toFixed(2) + ' more than you have been paid back.'
+    : '';
   const profit = income - expense;
   document.getElementById('sum-income').textContent  = '$' + income.toFixed(2);
   document.getElementById('sum-expense').textContent = '$' + expense.toFixed(2);
